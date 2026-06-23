@@ -1,0 +1,34 @@
+# Core Framework
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Database - Using Supabase Client
+supabase
+
+# Auth & Security
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt
+
+# Pydantic - Latest (has 3.14 wheels)
+pydantic
+pydantic-settings
+
+# AI Providers
+google-generativeai
+openai
+anthropic
+groq
+
+# HTTP Client
+httpx
+aiohttp
+
+# Utilities
+python-dotenv
+structlog
+tenacity
+
+# Dev Tools
+ruff
