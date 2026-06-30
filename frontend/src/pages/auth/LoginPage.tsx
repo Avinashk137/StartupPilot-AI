@@ -69,26 +69,34 @@ export default function LoginPage() {
 
       {/* ── Centered Login Card ────────────────────────────────── */}
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 15 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
-        className="relative z-10 w-full max-w-[500px] bg-white/95 backdrop-blur-xl rounded-[24px] shadow-[0_8px_40px_rgb(0,0,0,0.12)] border border-white/20 p-8 sm:p-12 flex flex-col"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="relative z-10 w-full max-w-[500px] bg-white/95 backdrop-blur-md rounded-[24px] shadow-2xl p-10 sm:p-12"
+        style={{
+          colorScheme: 'light',
+          '--background': '0 0% 100%',
+          '--foreground': '222.2 84% 4.9%',
+          '--muted': '210 40% 96.1%',
+          '--muted-foreground': '215.4 16.3% 46.9%',
+          '--border': '214.3 31.8% 91.4%',
+          '--input': '214.3 31.8% 91.4%',
+        } as React.CSSProperties}
       >
-        {/* Logo */}
         <div className="flex justify-center mb-8">
-          <div className="w-14 h-14 rounded-2xl gradient-brand flex items-center justify-center shadow-lg shadow-primary/30">
-            <Rocket className="w-7 h-7 text-white" />
+          <div className="w-12 h-12 rounded-xl gradient-brand flex items-center justify-center shadow-lg shadow-primary/30">
+            <Rocket className="w-6 h-6 text-white" />
           </div>
         </div>
 
-        <div className="text-center mb-8">
-          <h2 className="text-3xl font-bold text-slate-900 mb-2">Welcome back</h2>
-          <p className="text-slate-500">Sign in to your StartupPilot AI account</p>
+        <div className="mb-10 text-center">
+          <h2 className="text-3xl font-bold text-foreground mb-2">Welcome back</h2>
+          <p className="text-muted-foreground">Sign in to your StartupPilot AI account</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-2.5">
-            <Label htmlFor="email" className="text-slate-700 font-semibold">Email address</Label>
+          <div className="space-y-2">
+            <Label htmlFor="email">Email address</Label>
             <Input
               id="email"
               type="email"
@@ -98,16 +106,16 @@ export default function LoginPage() {
               required
               disabled={loading}
               autoComplete="email"
-              className="h-12 rounded-xl border-slate-200 bg-slate-50/50 text-slate-900 focus-visible:ring-primary/20 focus-visible:border-primary transition-all shadow-sm"
+              className="h-11"
             />
           </div>
 
-          <div className="space-y-2.5">
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="password" className="text-slate-700 font-semibold">Password</Label>
+              <Label htmlFor="password">Password</Label>
               <Link
                 to="/forgot-password"
-                className="text-xs text-primary hover:text-primary/80 hover:underline font-medium transition-colors"
+                className="text-xs text-primary hover:underline font-medium"
                 tabIndex={-1}
               >
                 Forgot password?
@@ -123,12 +131,12 @@ export default function LoginPage() {
                 required
                 disabled={loading}
                 autoComplete="current-password"
-                className="h-12 pr-12 rounded-xl border-slate-200 bg-slate-50/50 text-slate-900 focus-visible:ring-primary/20 focus-visible:border-primary transition-all shadow-sm"
+                className="h-11 pr-10"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                 tabIndex={-1}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
@@ -137,32 +145,26 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {error && (
+            {error && (
             <motion.div
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="p-3.5 rounded-xl bg-red-50 border border-red-100 text-red-600 text-sm font-medium shadow-sm"
+              className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm"
               role="alert"
             >
               {error}
             </motion.div>
           )}
 
-          <Button 
-            type="submit" 
-            size="lg" 
-            className="w-full h-12 rounded-xl text-base font-semibold shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all hover:-translate-y-0.5" 
-            loading={loading} 
-            disabled={loading}
-          >
-            Sign In
-            <ArrowRight className="w-5 h-5 ml-2" />
+          <Button type="submit" size="lg" className="w-full flex justify-center" loading={loading} disabled={loading}>
+            Sign in
+            <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
         </form>
 
-        <p className="mt-8 text-center text-sm text-slate-500 font-medium">
+        <p className="mt-8 text-center text-sm text-muted-foreground">
           Don't have an account?{' '}
-          <Link to="/register" className="font-semibold text-primary hover:text-primary/80 transition-colors">
+          <Link to="/register" className="font-semibold text-primary hover:underline">
             Create one free
           </Link>
         </p>
