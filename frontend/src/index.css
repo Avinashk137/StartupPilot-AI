@@ -72,34 +72,34 @@
 }
 
 .dark {
-  /* ShadCN Dark Mode Tokens */
-  --background: oklch(12% 0.02 260);
-  --foreground: oklch(95% 0.01 260);
-  --card: oklch(15% 0.025 260);
-  --card-foreground: oklch(95% 0.01 260);
-  --popover: oklch(15% 0.025 260);
-  --popover-foreground: oklch(95% 0.01 260);
-  --primary: oklch(62% 0.24 260);
+  /* ShadCN Dark Mode Tokens — improved contrast */
+  --background: oklch(11% 0.02 260);
+  --foreground: oklch(96% 0.01 260);
+  --card: oklch(16% 0.025 260);
+  --card-foreground: oklch(96% 0.01 260);
+  --popover: oklch(16% 0.025 260);
+  --popover-foreground: oklch(96% 0.01 260);
+  --primary: oklch(64% 0.24 260);
   --primary-foreground: oklch(10% 0.02 260);
-  --secondary: oklch(20% 0.03 260);
-  --secondary-foreground: oklch(95% 0.01 260);
-  --muted: oklch(20% 0.03 260);
-  --muted-foreground: oklch(65% 0.04 260);
-  --accent: oklch(20% 0.03 260);
-  --accent-foreground: oklch(95% 0.01 260);
+  --secondary: oklch(21% 0.03 260);
+  --secondary-foreground: oklch(96% 0.01 260);
+  --muted: oklch(21% 0.03 260);
+  --muted-foreground: oklch(70% 0.04 260);
+  --accent: oklch(21% 0.03 260);
+  --accent-foreground: oklch(96% 0.01 260);
   --destructive: oklch(58% 0.22 25);
-  --destructive-foreground: oklch(95% 0.01 25);
-  --border: oklch(22% 0.03 260);
-  --input: oklch(22% 0.03 260);
-  --ring: oklch(62% 0.24 260);
-  --sidebar-background: oklch(11% 0.025 260);
-  --sidebar-foreground: oklch(75% 0.04 260);
-  --sidebar-primary: oklch(62% 0.24 260);
+  --destructive-foreground: oklch(96% 0.01 25);
+  --border: oklch(26% 0.03 260);
+  --input: oklch(26% 0.03 260);
+  --ring: oklch(64% 0.24 260);
+  --sidebar-background: oklch(10% 0.025 260);
+  --sidebar-foreground: oklch(78% 0.04 260);
+  --sidebar-primary: oklch(64% 0.24 260);
   --sidebar-primary-foreground: oklch(10% 0.02 260);
-  --sidebar-accent: oklch(18% 0.03 260);
-  --sidebar-accent-foreground: oklch(90% 0.02 260);
-  --sidebar-border: oklch(22% 0.03 260);
-  --sidebar-ring: oklch(62% 0.24 260);
+  --sidebar-accent: oklch(19% 0.03 260);
+  --sidebar-accent-foreground: oklch(92% 0.02 260);
+  --sidebar-border: oklch(24% 0.03 260);
+  --sidebar-ring: oklch(64% 0.24 260);
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -287,6 +287,35 @@ body {
 .agent-dot-pending {
   background: var(--muted-foreground);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   DARK MODE — COLOR OVERRIDES FOR HARD-CODED CLASSES
+   Ensure report badges and highlights remain readable in dark mode
+   ═══════════════════════════════════════════════════════════ */
+
+/* Emerald badges (completed status) */
+.dark .bg-emerald-50 { background-color: oklch(18% 0.04 155) !important; }
+.dark .text-emerald-700 { color: oklch(70% 0.18 155) !important; }
+.dark .border-emerald-200 { border-color: oklch(25% 0.06 155) !important; }
+.dark .bg-emerald-100 { background-color: oklch(20% 0.05 155) !important; }
+
+/* Blue badges (running/info status) */
+.dark .bg-blue-100 { background-color: oklch(18% 0.04 230) !important; }
+.dark .text-blue-700 { color: oklch(68% 0.18 230) !important; }
+.dark .border-blue-200 { border-color: oklch(24% 0.05 230) !important; }
+.dark .bg-blue-50 { background-color: oklch(14% 0.03 230) !important; }
+
+/* Red badges (failed/error status) */
+.dark .bg-red-100 { background-color: oklch(18% 0.05 25) !important; }
+.dark .text-red-700 { color: oklch(65% 0.20 25) !important; }
+
+/* Amber/warning */
+.dark .bg-amber-50 { background-color: oklch(16% 0.04 85) !important; }
+.dark .text-amber-700 { color: oklch(72% 0.18 85) !important; }
+
+/* Gray muted backgrounds */
+.dark .bg-gray-100 { background-color: oklch(20% 0.02 260) !important; }
+.dark .text-gray-700 { color: oklch(72% 0.03 260) !important; }
 
 /* Typography */
 .display-xl {

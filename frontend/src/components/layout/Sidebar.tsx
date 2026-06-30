@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, FolderKanban, Bot, FileText, BarChart3,
   Download, Bell, Settings, User, LogOut, ChevronLeft,
-  Rocket, Moon, Sun, Shield, Zap, ChevronRight
+  Rocket, Shield
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/providers/auth-provider'
@@ -32,13 +32,11 @@ const bottomItems: NavItem[] = [
 ]
 
 interface SidebarProps {
-  theme: 'light' | 'dark'
-  onThemeToggle: () => void
   collapsed: boolean
   onCollapse: (v: boolean) => void
 }
 
-export function Sidebar({ theme, onThemeToggle, collapsed, onCollapse }: SidebarProps) {
+export function Sidebar({ collapsed, onCollapse }: SidebarProps) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
 
@@ -108,32 +106,6 @@ export function Sidebar({ theme, onThemeToggle, collapsed, onCollapse }: Sidebar
           <NavItem key={item.path} item={item} collapsed={collapsed} />
         ))}
 
-        {/* Theme toggle */}
-        <button
-          onClick={onThemeToggle}
-          className={cn(
-            "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-all duration-200",
-            collapsed && "justify-center px-0"
-          )}
-        >
-          {theme === 'dark' ? (
-            <Sun className="w-4 h-4 shrink-0" />
-          ) : (
-            <Moon className="w-4 h-4 shrink-0" />
-          )}
-          <AnimatePresence>
-            {!collapsed && (
-              <motion.span
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="text-sm"
-              >
-                {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </button>
 
         {/* User avatar */}
         <div className={cn(

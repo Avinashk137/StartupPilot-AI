@@ -3,7 +3,7 @@ orchestrator.py — Single-Call AI Orchestrator with Smart Cache
 
 Architecture:
   1. Hash project inputs → check Supabase for cache hit
-  2. ONE master AI call → all 7 sections in a single response
+  2. Sequential AI calls — one per section
   3. Validate each section → regenerate missing sections individually
   4. Save each section to Supabase independently
   5. Always show specific, actionable error messages
@@ -50,15 +50,20 @@ TABLE_MAP = {
 }
 
 MAX_SECTION_RETRIES = 1
+TOTAL_SECTIONS = len(SECTION_KEYS)
 
 
 class AgentOrchestrator:
     """
     Single-call AI orchestrator:
     - Checks cache before running
-    - Makes ONE master AI call for all 5 sections
-    - Validates and regenerates missing sections individually
-    - Saves each section independently to Supabase
+    - Executes agents one-by-one in sequence
+    - Saves each section independently to Supabase immediately after generation
+    - Retries on failure
+    - Status logic:
+        completed  = all 5 reports succeeded
+        partial    = some reports succeeded, some failed
+        failed     = zero reports succeeded
     """
 
     def __init__(self, supabase_client):
@@ -75,23 +80,47 @@ class AgentOrchestrator:
         - Validates section_key
         - Generates a fresh AI response for just that section
         - Saves to the correct Supabase table
+        - Recomputes overall project status (may upgrade partial → completed)
         - Returns the saved report record
         """
         if section_key not in SECTION_KEYS:
             raise ValueError(f"Unknown section: {section_key}. Valid: {SECTION_KEYS}")
 
         project_id = project["id"]
+        user_id = project.get("user_id", "")
         display = SECTION_DISPLAY[section_key]
         logger.info(f"Regenerating section on-demand: {section_key}", project_id=project_id)
 
-        section_data, tokens = await self._generate_single_section(section_key, project, project_id)
+        await self._save_report_status(project_id, section_key, "running")
+
+        try:
+            section_data, tokens = await self._generate_single_section(section_key, project, project_id)
+        except Exception as e:
+            section_data = {"error": str(e)}
 
         if not section_data or "error" in section_data:
             error_msg = section_data.get("error", "Unknown error") if section_data else "Empty response"
+            await self._log_agent(project_id, section_key, "failed", error_msg)
+            await self._save_report_status(project_id, section_key, "failed", {"error": error_msg})
+            await self._create_notification(
+                user_id=user_id, project_id=project_id,
+                title=f"{display} Failed ⚠️",
+                message=f"Could not regenerate {display}: {error_msg}",
+                notification_type="error",
+            )
             raise AIServiceException(error_msg)
 
-        await self._save_report(project_id, section_key, section_data)
+        await self._save_report_status(project_id, section_key, "completed", section_data)
         await self._log_agent(project_id, section_key, "completed", tokens=tokens)
+        await self._create_notification(
+            user_id=user_id, project_id=project_id,
+            title=f"{display} Regenerated ✅",
+            message=f"{display} regenerated successfully.",
+            notification_type="success",
+        )
+
+        # Recompute the project's overall status — might upgrade from partial → completed
+        await self._recompute_project_status(project_id, user_id, project.get("business_name", "your business"))
 
         logger.info(f"Section regenerated and saved: {section_key}", project_id=project_id)
         return section_data
@@ -107,7 +136,11 @@ class AgentOrchestrator:
         - Checks cache before running
         - Executes agents one-by-one in sequence
         - Saves each section independently to Supabase immediately after generation
-        - Retries on failure, halting the job if a section permanently fails
+        - Continues even if a section fails (marks it failed, continues)
+        - Final status:
+            completed = all 5 reports succeeded
+            partial   = some succeeded, some failed
+            failed    = zero succeeded
         """
         project_id = project["id"]
         user_id = project["user_id"]
@@ -149,20 +182,20 @@ class AgentOrchestrator:
                 await self._create_notification(
                     user_id=user_id, project_id=project_id,
                     title="Resuming Analysis 🔄",
-                    message=f"Resuming analysis for '{business_name}'. {len(completed_sections)}/5 sections already complete.",
+                    message=f"Resuming analysis for '{business_name}'. {len(completed_sections)}/{TOTAL_SECTIONS} sections already complete.",
                     notification_type="info",
                 )
             else:
                 await self._create_notification(
                     user_id=user_id, project_id=project_id,
                     title="AI Analysis Started 🚀",
-                    message=f"5 AI agents are now sequentially analyzing '{business_name}'.",
+                    message=f"{TOTAL_SECTIONS} AI agents are now sequentially analyzing '{business_name}'.",
                     notification_type="info",
                 )
             await self._create_activity(
                 project_id=project_id, user_id=user_id,
                 action="AI Analysis Started",
-                details={"sections": 5, "input_hash": input_hash, "job_id": job_id},
+                details={"sections": TOTAL_SECTIONS, "input_hash": input_hash, "job_id": job_id},
                 icon="play-circle",
             )
 
@@ -188,7 +221,7 @@ class AgentOrchestrator:
                     if on_progress:
                         on_progress(section_key, pct, "completed")
                     continue
-                    
+
                 # Execute single agent
                 logger.info(f"{display} Agent started", project_id=project_id, job_id=job_id)
                 await self._save_report_status(project_id, section_key, "running")
@@ -200,7 +233,7 @@ class AgentOrchestrator:
                     section_data = {"error": f"Agent crashed: {str(e)[:200]}"}
 
                 if not section_data or "error" in section_data:
-                    # Section failed -> Mark as failed but CONTINUE job
+                    # Section failed → Mark as failed but CONTINUE job
                     error_msg = section_data.get("error", "Unknown error") if section_data else "Empty response"
                     failed_sections.append(section_key)
                     results[section_key] = {"error": error_msg}
@@ -214,9 +247,9 @@ class AgentOrchestrator:
                         notification_type="error",
                     )
                     logger.warning(f"{display} Agent failed", project_id=project_id, error=error_msg)
-                    continue # Continue with the remaining agents instead of break
+                    continue  # Continue with the remaining agents
                 else:
-                    # Section complete -> Save to Supabase immediately
+                    # Section complete → Save to Supabase immediately
                     logger.info(f"{display} Agent completed", project_id=project_id)
                     try:
                         logger.info(f"Saving report for {display}", project_id=project_id)
@@ -243,41 +276,56 @@ class AgentOrchestrator:
                         logger.error(f"Failed to save {section_key}", error=str(save_err), project_id=project_id)
                         failed_sections.append(section_key)
                         results[section_key] = {"error": f"Database save failed: {str(save_err)[:200]}"}
-                        continue # Continue loop on database save failure
+                        continue  # Continue loop on database save failure
 
                 await asyncio.sleep(0.5)  # Short pause between sequential calls
 
-            # ── 5. Save input hash & finalize ─────────────────
+            # ── 5. Compute final status ─────────────────────────
+            # completed  = all 5 reports succeeded
+            # partial    = some succeeded, some failed (1-4 succeeded)
+            # failed     = zero reports succeeded
             successful = [k for k in results if "error" not in results[k]]
-            final_status = "failed" if not successful else "completed"
+            n_successful = len(successful)
+
+            if n_successful == TOTAL_SECTIONS:
+                final_status = "completed"
+            elif n_successful > 0:
+                final_status = "partial"
+            else:
+                final_status = "failed"
 
             update_data: Dict[str, Any] = {
                 "status": final_status,
-                "progress_percent": 100 if final_status == "completed" else project.get("progress_percent", 0),
+                "progress_percent": 100 if final_status == "completed" else SECTION_PROGRESS.get(successful[-1], 0) if successful else 0,
                 "current_agent": None,
                 "completed_at": datetime.now(timezone.utc).isoformat(),
             }
 
-            if final_status == "completed":
-                # Save diagnostics if fully completed
+            if final_status in ("completed", "partial"):
+                # Save diagnostics
                 try:
                     res_diag = self.supabase.table("projects").update({
                         "input_hash": input_hash,
                         "ai_diagnostics": {
-                            "sections_completed": len(successful),
+                            "sections_completed": n_successful,
+                            "sections_failed": len(failed_sections),
                             "sections_cached": len(completed_sections),
                             "total_tokens": tokens_total,
-                            "job_id": job_id
+                            "job_id": job_id,
+                            "failed_sections": failed_sections,
                         }
                     }).eq("id", project_id).execute()
                     if hasattr(res_diag, 'error') and res_diag.error:
                         raise Exception(str(res_diag.error))
                 except Exception as e:
                     logger.warning("Failed to save ai_diagnostics or input_hash (possibly missing columns)", error=str(e), project_id=project_id)
-                
-                update_data["error_message"] = None
+
+                if final_status == "partial":
+                    update_data["error_message"] = f"Partial completion: {n_successful}/{TOTAL_SECTIONS} reports succeeded. Failed: {', '.join(failed_sections)}. Use 'Retry' on failed reports."
+                else:
+                    update_data["error_message"] = None
             else:
-                update_data["error_message"] = f"Failed at {failed_sections[0]}: {results.get(failed_sections[0], {}).get('error', 'Unknown')}"
+                update_data["error_message"] = f"All reports failed. First failure at {failed_sections[0] if failed_sections else 'unknown'}: {results.get(failed_sections[0] if failed_sections else '', {}).get('error', 'Unknown')}"
 
             try:
                 res = self.supabase.table("projects").update(update_data).eq("id", project_id).execute()
@@ -290,15 +338,23 @@ class AgentOrchestrator:
             # Final notification
             if final_status == "completed":
                 title = "Analysis Complete! 🎉"
-                message = f"Your startup analysis for '{business_name}' is ready! All {len(SECTION_KEYS)} reports generated."
+                message = f"Your startup analysis for '{business_name}' is ready! All {TOTAL_SECTIONS} reports generated successfully."
                 notif_type = "success"
-            else:
-                failed_agent_name = SECTION_DISPLAY.get(failed_sections[0], failed_sections[0])
-                title = f"Analysis Failed at {failed_agent_name} ❌"
+            elif final_status == "partial":
+                title = f"Analysis Partially Complete ⚠️"
                 message = (
-                    f"AI Analysis stopped at {failed_agent_name} for '{business_name}'. "
+                    f"{n_successful}/{TOTAL_SECTIONS} reports generated for '{business_name}'. "
+                    f"Failed: {', '.join(SECTION_DISPLAY.get(s, s) for s in failed_sections)}. "
+                    "Use 'Retry' buttons on failed reports to complete the analysis."
+                )
+                notif_type = "warning"
+            else:
+                failed_agent_name = SECTION_DISPLAY.get(failed_sections[0], failed_sections[0]) if failed_sections else "Unknown"
+                title = f"Analysis Failed ❌"
+                message = (
+                    f"AI Analysis failed for '{business_name}'. "
                     f"Error: {update_data.get('error_message', 'Unknown error')}. "
-                    "Completed reports are saved. You can retry to resume."
+                    "Please try again."
                 )
                 notif_type = "error"
 
@@ -311,11 +367,11 @@ class AgentOrchestrator:
                 action="AI Analysis Finished",
                 details={
                     "total_tokens": tokens_total,
-                    "sections_completed": len(successful),
+                    "sections_completed": n_successful,
                     "failed_sections": failed_sections,
                     "job_id": job_id
                 },
-                icon="check-circle" if final_status == "completed" else "x-circle",
+                icon="check-circle" if final_status == "completed" else "alert-circle" if final_status == "partial" else "x-circle",
             )
 
             logger.info(
@@ -324,6 +380,7 @@ class AgentOrchestrator:
                 job_id=job_id,
                 status=final_status,
                 total_tokens=tokens_total,
+                sections_completed=n_successful,
             )
             return results
 
@@ -353,41 +410,6 @@ class AgentOrchestrator:
                 pass
             raise
 
-    async def regenerate_section(self, project: dict, section_key: str):
-        """Regenerate a single section independently and save it."""
-        project_id = project.get("id")
-        user_id = project.get("user_id")
-        display = SECTION_DISPLAY.get(section_key, section_key)
-
-        await self._save_report_status(project_id, section_key, "running")
-        
-        try:
-            section_data, section_tokens = await self._generate_single_section(section_key, project, project_id)
-        except Exception as e:
-            section_data = {"error": str(e)}
-
-        if not section_data or "error" in section_data:
-            error_msg = section_data.get("error", "Unknown error") if section_data else "Empty response"
-            await self._log_agent(project_id, section_key, "failed", error_msg)
-            await self._save_report_status(project_id, section_key, "failed", {"error": error_msg})
-            
-            await self._create_notification(
-                user_id=user_id, project_id=project_id,
-                title=f"{display} Failed ⚠️",
-                message=f"Could not regenerate {display}: {error_msg}",
-                notification_type="error",
-            )
-        else:
-            await self._save_report_status(project_id, section_key, "completed", section_data)
-            await self._log_agent(project_id, section_key, "completed", tokens=section_tokens)
-            
-            await self._create_notification(
-                user_id=user_id, project_id=project_id,
-                title=f"{display} Regenerated ✅",
-                message=f"{display} regenerated successfully.",
-                notification_type="success",
-            )
-
     # ── Core AI Logic ─────────────────────────────────────────
 
     async def _generate_single_section(
@@ -400,8 +422,6 @@ class AgentOrchestrator:
         display = SECTION_DISPLAY[section_key]
 
         last_error = ""
-        # We retry max 2 times (3 attempts total) with exponential backoff inside ai_service.
-        # But we will add one loop layer here for validation failures.
         for attempt in range(1, MAX_SECTION_RETRIES + 2):
             try:
                 prompt = self.prompt_builder.build_section_prompt(section_key, project)
@@ -433,7 +453,7 @@ class AgentOrchestrator:
 
             if attempt <= MAX_SECTION_RETRIES:
                 logger.warning(f"Retrying section {section_key} due to validation/API failure", project_id=project_id)
-                await asyncio.sleep(2 ** attempt) # Backoff
+                await asyncio.sleep(2 ** attempt)  # Backoff
 
         # All regen retries failed
         logger.error(
@@ -472,10 +492,10 @@ class AgentOrchestrator:
             res = self.supabase.table("projects")\
                 .select("input_hash")\
                 .eq("id", project_id).execute()
-            
+
             if not res.data:
                 return []
-                
+
             project_row = res.data[0]
             if project_row.get("input_hash") != input_hash:
                 logger.info("Input hash changed — invalidating cache", project_id=project_id)
@@ -486,7 +506,7 @@ class AgentOrchestrator:
                 r = self.supabase.table(table)\
                     .select("status")\
                     .eq("project_id", project_id).execute()
-                
+
                 if r.data and r.data[0].get("status") == "completed":
                     completed.append(section_key)
 
@@ -507,6 +527,80 @@ class AgentOrchestrator:
             if key not in data or not data[key]:
                 return False
         return True
+
+    # ── Project Status Recompute ───────────────────────────────
+
+    async def _recompute_project_status(self, project_id: str, user_id: str, business_name: str) -> str:
+        """
+        After a single-section regeneration, re-check all report tables
+        and recompute the project's overall status:
+          completed = all 5 completed
+          partial   = some completed, some failed/pending
+          failed    = all failed or none ever ran
+        Returns the new status string.
+        """
+        try:
+            statuses = {}
+            for section_key, table in TABLE_MAP.items():
+                r = self.supabase.table(table)\
+                    .select("status")\
+                    .eq("project_id", project_id).execute()
+                if r.data:
+                    statuses[section_key] = r.data[0].get("status", "pending")
+                else:
+                    statuses[section_key] = "pending"
+
+            n_completed = sum(1 for s in statuses.values() if s == "completed")
+            n_failed = sum(1 for s in statuses.values() if s == "failed")
+
+            if n_completed == TOTAL_SECTIONS:
+                new_status = "completed"
+                progress = 100
+            elif n_completed > 0:
+                new_status = "partial"
+                # Calculate progress based on completed sections
+                completed_keys = [k for k, s in statuses.items() if s == "completed"]
+                max_pct = max(SECTION_PROGRESS.get(k, 0) for k in completed_keys) if completed_keys else 0
+                progress = max_pct
+            elif n_failed > 0:
+                new_status = "failed"
+                progress = 0
+            else:
+                # Nothing ran yet — keep as draft
+                new_status = "draft"
+                progress = 0
+
+            update_data: Dict[str, Any] = {
+                "status": new_status,
+                "progress_percent": progress,
+                "current_agent": None,
+            }
+            if new_status == "completed":
+                update_data["completed_at"] = datetime.now(timezone.utc).isoformat()
+                update_data["error_message"] = None
+            elif new_status == "partial":
+                failed_keys = [k for k, s in statuses.items() if s == "failed"]
+                update_data["error_message"] = (
+                    f"Partial completion: {n_completed}/{TOTAL_SECTIONS} reports succeeded. "
+                    f"Failed: {', '.join(failed_keys)}. Use 'Retry' on failed reports."
+                )
+
+            self._update_project(project_id, update_data)
+            logger.info(f"Project status recomputed: {new_status}", project_id=project_id, n_completed=n_completed)
+
+            # Notify if newly completed
+            if new_status == "completed":
+                await self._create_notification(
+                    user_id=user_id, project_id=project_id,
+                    title="All Reports Complete! 🎉",
+                    message=f"All {TOTAL_SECTIONS} reports for '{business_name}' are now ready.",
+                    notification_type="success",
+                )
+
+            return new_status
+        except Exception as e:
+            logger.error("Failed to recompute project status", error=str(e), project_id=project_id)
+            return "partial"  # Safe default
 
     # ── Supabase Helpers ──────────────────────────────────────
 
@@ -529,16 +623,16 @@ class AgentOrchestrator:
         }
 
         existing = self.supabase.table(table).select("id").eq("project_id", project_id).execute()
-        
+
         if existing.data:
             res = self.supabase.table(table).update(record).eq("project_id", project_id).execute()
         else:
             res = self.supabase.table(table).insert(record).execute()
-            
+
         if hasattr(res, 'error') and res.error:
             raise Exception(f"Supabase returned error: {res.error}")
 
-        logger.info(f"Report saved: {table}", project_id=project_id)
+        logger.info(f"Report saved: {table} [{status}]", project_id=project_id)
 
     async def _log_agent(
         self, project_id: str, agent_name: str, status: str,

@@ -56,7 +56,7 @@ export default function ProjectDetailPage() {
       setAgentLogs(logsRes.data.data)
       setProjectStatus(statusRes.data.data)
 
-      if (projData.status === 'completed' || projData.status === 'failed') {
+      if (projData.status === 'completed' || projData.status === 'failed' || projData.status === 'partial') {
         const reportsRes = await api.get(`/projects/${id}/reports`)
         setReports(reportsRes.data.data)
       }
@@ -159,6 +159,7 @@ export default function ProjectDetailPage() {
 
   const isProcessing = project.status === 'processing'
   const isCompleted = project.status === 'completed'
+  const isPartial = project.status === 'partial'
   const isDraft = project.status === 'draft'
   const isFailed = project.status === 'failed'
   
@@ -200,10 +201,10 @@ export default function ProjectDetailPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {(isDraft || isFailed) && (
+            {(isDraft || isFailed || isPartial) && (
               <Button onClick={handleRun} disabled={running || isProcessing} className="gap-2">
                 <Play className="w-4 h-4" />
-                {isFailed ? 'Resume Analysis' : 'Run AI Analysis'}
+                {isFailed ? 'Retry Analysis' : isPartial ? 'Resume & Retry Failed' : 'Run AI Analysis'}
               </Button>
             )}
             {isProcessing && (
@@ -262,6 +263,21 @@ export default function ProjectDetailPage() {
                     </div>
                   )
                 })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Show partial completion warning */}
+        {project.status === 'partial' && project.error_message && (
+          <Card className="border-amber-500/40 bg-amber-50/60 dark:bg-amber-950/20">
+            <CardContent className="py-3 px-5">
+              <div className="flex items-start gap-3">
+                <CheckCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-amber-700 dark:text-amber-400">Partially Completed</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{project.error_message}</p>
+                </div>
               </div>
             </CardContent>
           </Card>

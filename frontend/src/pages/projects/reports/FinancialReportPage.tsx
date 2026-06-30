@@ -222,7 +222,7 @@ export default function FinancialReportPage() {
               { label: 'Year 3 ROI', value: `${roi.year3_roi || 0}%`, good: roi.year3_roi >= 100 },
               { label: 'Payback Period', value: `${roi.payback_period_months || '—'} months`, good: roi.payback_period_months <= 18 },
               { label: 'Internal Rate of Return (IRR)', value: `${roi.irr || 0}%`, good: roi.irr >= 20 },
-              { label: 'Net Present Value (NPV)', value: formatCurrency(roi.npv || 0, currency), good: (roi.npv || 0) > 0 },
+              { label: 'Net Present Value (NPV)', value: formatCurrency(roi.npv_3year || roi.npv || 0, currency), good: (roi.npv_3year || roi.npv || 0) > 0 },
             ].map(item => (
               <div key={item.label} className="flex justify-between items-center py-1.5 border-b border-border last:border-0">
                 <span className="text-sm text-muted-foreground">{item.label}</span>
@@ -348,7 +348,7 @@ export default function FinancialReportPage() {
       </div>
 
       {/* Funding Requirements */}
-      {funding.total_required && (
+      {(funding.total_needed || funding.total_required) && (
         <Card className="border-primary/20 bg-primary/5">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
@@ -356,12 +356,12 @@ export default function FinancialReportPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-primary mb-3">{formatCurrency(funding.total_required, currency)}</p>
-            {funding.funding_rounds && (
+            <p className="text-2xl font-bold text-primary mb-3">{formatCurrency(funding.total_needed || funding.total_required, currency)}</p>
+            {(funding.use_of_funds || funding.funding_rounds) && (
               <div className="space-y-2">
-                {funding.funding_rounds.map((round: any, i: number) => (
+                {(funding.use_of_funds || funding.funding_rounds || []).map((round: any, i: number) => (
                   <div key={i} className="flex justify-between items-center py-2 border-b border-border last:border-0">
-                    <span className="text-sm font-medium text-foreground">{round.round}</span>
+                    <span className="text-sm font-medium text-foreground">{round.purpose || round.round || round.category}</span>
                     <span className="text-sm font-bold text-primary">{formatCurrency(round.amount, currency)}</span>
                   </div>
                 ))}

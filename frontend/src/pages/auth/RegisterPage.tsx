@@ -185,7 +185,7 @@ export default function RegisterPage() {
           <div className="space-y-3">
             {[
               'Free to start, no credit card required',
-              '7 AI agents working on your business',
+              '5 AI agents working on your business',
               'PDF reports ready in minutes',
               'Market research & financial forecasts',
             ].map((feat) => (

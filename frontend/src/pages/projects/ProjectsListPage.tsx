@@ -112,7 +112,7 @@ export default function ProjectsListPage() {
           />
         </div>
         <div className="flex gap-2">
-          {['all', 'draft', 'processing', 'completed', 'failed'].map((status) => (
+          {['all', 'draft', 'processing', 'completed', 'partial', 'failed'].map((status) => (
             <button
               key={status}
               onClick={() => setStatusFilter(status)}

@@ -16,13 +16,18 @@ async def get_dashboard_stats(
         completed_res = supabase_admin.table("projects").select("*", count="exact").eq("user_id", current_user.id).eq("status", "completed").execute()
         completed = completed_res.count or 0
 
+        partial_res = supabase_admin.table("projects").select("*", count="exact").eq("user_id", current_user.id).eq("status", "partial").execute()
+        partial = partial_res.count or 0
+
         processing_res = supabase_admin.table("projects").select("*", count="exact").eq("user_id", current_user.id).eq("status", "processing").execute()
         processing = processing_res.count or 0
+
+        failed_res = supabase_admin.table("projects").select("*", count="exact").eq("user_id", current_user.id).eq("status", "failed").execute()
+        failed = failed_res.count or 0
 
         unread_res = supabase_admin.table("notifications").select("*", count="exact").eq("user_id", current_user.id).eq("is_read", False).execute()
         unread = unread_res.count or 0
 
-        # Latest analytics scores removed as part of agent removal
         latest_scores = None
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch dashboard stats: {e}")
@@ -32,7 +37,9 @@ async def get_dashboard_stats(
         "data": {
             "total_projects": total_projects,
             "completed_projects": completed,
+            "partial_projects": partial,
             "processing_projects": processing,
+            "failed_projects": failed,
             "unread_notifications": unread,
             "latest_scores": latest_scores,
         }

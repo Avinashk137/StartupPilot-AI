@@ -16,6 +16,7 @@ import { Breadcrumb } from '@/components/navigation/Breadcrumb'
 function StatusBadge({ status }: { status: string }) {
   const configs = {
     completed: { icon: CheckCircle, label: 'Completed', className: 'text-green-600 bg-green-50 dark:bg-green-950/30' },
+    partial: { icon: Clock, label: 'Partial', className: 'text-amber-600 bg-amber-50 dark:bg-amber-950/30' },
     processing: { icon: Loader, label: 'Processing', className: 'text-blue-600 bg-blue-50 dark:bg-blue-950/30' },
     draft: { icon: Clock, label: 'Draft', className: 'text-gray-600 bg-gray-100 dark:bg-gray-800' },
     failed: { icon: XCircle, label: 'Failed', className: 'text-red-600 bg-red-50 dark:bg-red-950/30' },
@@ -96,7 +97,7 @@ export default function DashboardPage() {
         {[
           { label: 'Total Projects', value: stats?.total_projects || 0, icon: FolderIcon, color: 'text-primary' },
           { label: 'Completed', value: stats?.completed_projects || 0, icon: CheckCircle, color: 'text-green-500' },
-          { label: 'Processing', value: stats?.processing_projects || 0, icon: Loader, color: 'text-blue-500' },
+          { label: 'Partial', value: stats?.partial_projects || 0, icon: Activity, color: 'text-amber-500' },
           { label: 'Notifications', value: stats?.unread_notifications || 0, icon: Bell, color: 'text-orange-500' },
         ].map((stat, i) => (
           <motion.div

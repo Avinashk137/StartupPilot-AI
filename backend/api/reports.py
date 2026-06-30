@@ -94,6 +94,11 @@ async def get_agent_logs(project_id: str, current_user = Depends(get_current_use
     return {"success": True, "data": result.data}
 
 async def _get_report(project_id: str, table_name: str, current_user):
+    """
+    Fetch a completed report. Returns 404 with descriptive status if not ready.
+    The detail string encodes the actual status so the frontend can render
+    the correct UI (spinner for running, retry button for failed, etc.)
+    """
     # Verify project ownership
     try:
         res = supabase_admin.table("projects").select("user_id").eq("id", project_id).execute()
@@ -101,7 +106,7 @@ async def _get_report(project_id: str, table_name: str, current_user):
         raise HTTPException(status_code=500, detail=f"Failed to fetch project: {e}")
     if not res.data:
         raise NotFoundException("Project", project_id)
-        
+
     project = res.data[0]
     role = current_user.user_metadata.get("role", "user") if current_user.user_metadata else "user"
     if str(project.get("user_id")) != str(current_user.id) and role != "admin":
@@ -111,15 +116,37 @@ async def _get_report(project_id: str, table_name: str, current_user):
         result = supabase_admin.table(table_name).select("*").eq("project_id", project_id).execute()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch report: {e}")
-        
-    if not result.data:
-        raise HTTPException(status_code=404, detail="Report not yet generated")
-        
-    report = result.data[0]
-    if report.get("status") != "completed":
-        raise HTTPException(status_code=404, detail="Report is not completed")
 
-    return {"success": True, "data": report}
+    if not result.data:
+        # No record at all — report was never generated
+        raise HTTPException(
+            status_code=404,
+            detail="Report not yet generated. Run AI Analysis first."
+        )
+
+    report = result.data[0]
+    status = report.get("status", "pending")
+
+    if status == "completed":
+        return {"success": True, "data": report}
+    elif status == "running":
+        raise HTTPException(
+            status_code=202,
+            detail=f"Report is currently being generated. Please wait and refresh."
+        )
+    elif status == "failed":
+        error_detail = report.get("raw_data", {}) or {}
+        error_msg = error_detail.get("error", "Unknown error") if isinstance(error_detail, dict) else "Unknown error"
+        raise HTTPException(
+            status_code=404,
+            detail=f"Report generation failed: {error_msg}. Use the Retry button to regenerate."
+        )
+    else:
+        # pending or unknown
+        raise HTTPException(
+            status_code=404,
+            detail="Report has not been generated yet. Run AI Analysis to generate all reports."
+        )
 
 
 @router.post("/{project_id}/reports/{report_type}/regenerate")

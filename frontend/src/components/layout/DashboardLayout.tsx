@@ -31,15 +31,13 @@ export function DashboardLayout() {
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Sidebar */}
       <Sidebar
-        theme={theme}
-        onThemeToggle={toggleTheme}
         collapsed={sidebarCollapsed}
         onCollapse={setSidebarCollapsed}
       />
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <Navbar />
+        <Navbar theme={theme} onThemeToggle={toggleTheme} />
         <main className="flex-1 overflow-auto">
           <div className="p-6">
             <Outlet />

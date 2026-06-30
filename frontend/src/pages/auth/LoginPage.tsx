@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Rocket, Eye, EyeOff, ArrowRight, Zap, TrendingUp, Users } from 'lucide-react'
+import { Rocket, Eye, EyeOff, ArrowRight, TrendingUp, BarChart3, FileText, DollarSign, Megaphone } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth, extractErrorMessage } from '@/providers/auth-provider'
 
-const features = [
-  { icon: Zap, text: '7 AI Agents working for you' },
-  { icon: TrendingUp, text: 'Financial forecasts in minutes' },
-  { icon: Users, text: 'Investor-ready reports instantly' },
+const agents = [
+  { icon: TrendingUp,  label: 'Market Research',      desc: 'Market size, trends & opportunities',   color: 'bg-indigo-500/20 text-indigo-400',  delay: 0.15 },
+  { icon: BarChart3,   label: 'Competitor Analysis',   desc: 'SWOT analysis & competitive landscape', color: 'bg-violet-500/20 text-violet-400',   delay: 0.25 },
+  { icon: FileText,    label: 'Business Plan',          desc: 'Full business strategy & model',        color: 'bg-cyan-500/20 text-cyan-400',       delay: 0.35 },
+  { icon: DollarSign,  label: 'Financial Report',       desc: 'Forecasts, ROI & cash flow analysis',  color: 'bg-emerald-500/20 text-emerald-400', delay: 0.45 },
+  { icon: Megaphone,   label: 'Marketing Strategy',     desc: 'Social posts & growth tactics',        color: 'bg-pink-500/20 text-pink-400',       delay: 0.55 },
 ]
 
 export default function LoginPage() {
@@ -33,7 +35,6 @@ export default function LoginPage() {
     e.preventDefault()
     setError('')
 
-    // Basic client-side validation
     if (!email.trim()) {
       setError('Please enter your email address.')
       return
@@ -61,74 +62,87 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex bg-background">
-      {/* Left — Branding Panel */}
+      {/* ── Left — Branding Panel ─────────────────────────────── */}
       <div className="hidden lg:flex lg:w-[55%] relative overflow-hidden">
-        {/* Gradient bg */}
-        <div className="absolute inset-0 gradient-brand opacity-95" />
-        <div className="absolute inset-0 gradient-mesh opacity-30" />
+        {/* Layered gradient background */}
+        <div className="absolute inset-0" style={{
+          background: 'linear-gradient(135deg, oklch(20% 0.06 260) 0%, oklch(14% 0.04 280) 50%, oklch(10% 0.03 260) 100%)'
+        }} />
+        {/* Mesh overlay */}
+        <div className="absolute inset-0" style={{
+          backgroundImage: 'radial-gradient(at 20% 20%, oklch(55% 0.22 260 / 0.20) 0px, transparent 50%), radial-gradient(at 80% 80%, oklch(62% 0.26 285 / 0.15) 0px, transparent 50%), radial-gradient(at 50% 50%, oklch(70% 0.22 200 / 0.08) 0px, transparent 70%)'
+        }} />
 
         {/* Floating orbs */}
-        <div className="absolute top-20 right-20 w-72 h-72 rounded-full bg-white/5 blur-3xl animate-float" />
-        <div className="absolute bottom-20 left-20 w-96 h-96 rounded-full bg-white/5 blur-3xl animate-float" style={{ animationDelay: '1.5s' }} />
+        <div className="absolute top-16 right-16 w-64 h-64 rounded-full opacity-10 animate-float" style={{ background: 'oklch(62% 0.26 285)', filter: 'blur(60px)' }} />
+        <div className="absolute bottom-24 left-12 w-80 h-80 rounded-full opacity-8 animate-float" style={{ background: 'oklch(55% 0.22 260)', filter: 'blur(80px)', animationDelay: '1.5s' }} />
 
-        <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
+        <div className="relative z-10 flex flex-col justify-between p-12 w-full">
           {/* Logo */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
-              <Rocket className="w-6 h-6 text-white" />
+            <div className="w-10 h-10 rounded-xl gradient-brand flex items-center justify-center shadow-lg shadow-primary/30">
+              <Rocket className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="font-bold text-lg leading-none">StartupPilot</p>
-              <p className="text-white/60 text-xs font-medium">AI Platform</p>
+              <p className="font-bold text-base text-white leading-none">StartupPilot</p>
+              <p className="text-white/40 text-xs font-semibold mt-0.5 tracking-wider uppercase">AI Platform</p>
             </div>
           </div>
 
           {/* Main copy */}
           <div className="space-y-8">
             <div>
-              <h1 className="text-5xl font-bold leading-tight mb-4">
-                Your AI Team.<br />Working 24/7.
-              </h1>
-              <p className="text-white/75 text-lg leading-relaxed max-w-md">
-                Enter your business idea and watch as 7 specialized AI agents build your complete startup blueprint — market research, business plan, financials, and more.
-              </p>
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6 }}
+              >
+                <p className="text-white/50 text-sm font-semibold uppercase tracking-widest mb-3">5 AI Agents Working for You</p>
+                <h1 className="text-5xl font-bold leading-tight text-white mb-4" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+                  Build Your Startup<br />with AI.
+                </h1>
+                <p className="text-white/60 text-base leading-relaxed max-w-md">
+                  Enter your business idea. Our 5 specialized AI agents will generate a complete startup blueprint — instantly.
+                </p>
+              </motion.div>
             </div>
 
-            <div className="space-y-4">
-              {features.map((f, i) => (
+            {/* Agent list */}
+            <div className="space-y-3">
+              {agents.map((agent, i) => (
                 <motion.div
-                  key={i}
+                  key={agent.label}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.2 + i * 0.1 }}
-                  className="flex items-center gap-3"
+                  transition={{ delay: agent.delay, duration: 0.5 }}
+                  className="flex items-center gap-4 group"
                 >
-                  <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center">
-                    <f.icon className="w-4 h-4 text-white" />
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${agent.color} border border-white/10`}>
+                    <agent.icon className="w-4 h-4" />
                   </div>
-                  <span className="text-white/85 font-medium">{f.text}</span>
+                  <div>
+                    <p className="text-white/90 font-semibold text-sm">{agent.label}</p>
+                    <p className="text-white/40 text-xs">{agent.desc}</p>
+                  </div>
+                  <div className="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-400/60 shrink-0" />
                 </motion.div>
               ))}
             </div>
           </div>
 
-          {/* Testimonial */}
-          <div className="glass rounded-2xl p-5 bg-white/10 border-white/20">
-            <p className="text-white/90 text-sm italic leading-relaxed">
-              "StartupPilot gave me a complete business plan for my EdTech idea in under 5 minutes. The financial projections alone saved me weeks of work."
-            </p>
-            <div className="mt-3 flex items-center gap-2">
-              <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center text-xs font-bold">AK</div>
-              <div>
-                <p className="text-white/80 text-xs font-medium">Avinash K.</p>
-                <p className="text-white/50 text-xs">Founder, EduTech India</p>
-              </div>
+          {/* Bottom tagline */}
+          <div className="flex items-center gap-3 pt-4 border-t border-white/10">
+            <div className="flex -space-x-2">
+              {['S', 'A', 'R'].map((l, i) => (
+                <div key={i} className="w-7 h-7 rounded-full gradient-brand border-2 border-white/10 flex items-center justify-center text-white text-[10px] font-bold">{l}</div>
+              ))}
             </div>
+            <p className="text-white/40 text-xs">Join founders already using StartupPilot AI</p>
           </div>
         </div>
       </div>
 
-      {/* Right — Login Form */}
+      {/* ── Right — Login Form ────────────────────────────────── */}
       <div className="flex-1 flex items-center justify-center p-8">
         <motion.div
           initial={{ opacity: 0, y: 20 }}

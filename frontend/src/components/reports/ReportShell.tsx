@@ -111,11 +111,35 @@ export default function ReportShell({
     setRegenError(null)
     try {
       await api.post(`/projects/${projectId}/reports/${reportType}/regenerate`)
-      // Poll until completed — show spinner and reload after 8s
-      setTimeout(() => {
-        setRegenerating(false)
-        onReload?.()
-      }, 8000)
+      // Poll every 2s until report is no longer 'running'
+      let attempts = 0
+      const maxAttempts = 30 // 60 seconds max
+      const poll = setInterval(async () => {
+        attempts++
+        try {
+          // Try to fetch the report — it returns 202 while running, 200 when done
+          await api.get(`/projects/${projectId}/reports/${reportType}`)
+          // Success — report is completed
+          clearInterval(poll)
+          setRegenerating(false)
+          onReload?.()
+        } catch (pollErr: any) {
+          const status = pollErr?.response?.status
+          if (status === 202) {
+            // Still running — keep polling
+            return
+          }
+          // Any other error (404 = failed, 500 = error) — stop polling
+          clearInterval(poll)
+          setRegenerating(false)
+          onReload?.() // Reload to show error state
+        }
+        if (attempts >= maxAttempts) {
+          clearInterval(poll)
+          setRegenerating(false)
+          onReload?.()
+        }
+      }, 2000)
     } catch (err: any) {
       setRegenError(err?.response?.data?.detail || 'Regeneration failed')
       setRegenerating(false)
