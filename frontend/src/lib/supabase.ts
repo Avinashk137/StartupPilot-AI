@@ -4,7 +4,23 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase environment variables')
+  throw new Error('Missing Supabase environment variables. Check your .env.local file.')
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// ── Dev-mode logging ─────────────────────────────────────────────────────────
+if (import.meta.env.DEV) {
+  console.log(
+    '[Supabase] Connecting to project:',
+    supabaseUrl,
+    '| Key prefix:',
+    supabaseAnonKey.substring(0, 16) + '...',
+  )
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+})

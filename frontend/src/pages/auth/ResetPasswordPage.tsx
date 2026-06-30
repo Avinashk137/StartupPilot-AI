@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Rocket, Eye, EyeOff, ArrowRight, Check } from 'lucide-react'
+import { Rocket, Eye, EyeOff, ArrowRight, Check, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useAuth, extractErrorMessage } from '@/providers/auth-provider'
-
-// ── Password strength indicator ────────────────────────────────────────────────
+import { extractErrorMessage } from '@/providers/auth-provider'
+import api from '@/lib/api'
 
 function PasswordStrength({ password }: { password: string }) {
   const checks = [
@@ -50,60 +49,55 @@ function PasswordStrength({ password }: { password: string }) {
   )
 }
 
-// ── Register Page ──────────────────────────────────────────────────────────────
-
-export default function RegisterPage() {
-  const [fullName, setFullName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+export default function ResetPasswordPage() {
+  const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
-  const [error, setError] = useState('')
-  const [successMessage, setSuccessMessage] = useState('')
   const [loading, setLoading] = useState(false)
-  const { register, isAuthenticated, isLoading } = useAuth()
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState(false)
+  const [accessToken, setAccessToken] = useState<string | null>(null)
+  const [tokenError, setTokenError] = useState('')
   const navigate = useNavigate()
 
-  // Redirect already-authenticated users away from register
+  // Supabase redirects to /reset-password#access_token=xxx&type=recovery
   useEffect(() => {
-    if (!isLoading && isAuthenticated) {
-      navigate('/dashboard', { replace: true })
+    const hash = window.location.hash
+    const params = new URLSearchParams(hash.replace('#', '?'))
+    const token = params.get('access_token')
+    const type = params.get('type')
+
+    if (!token) {
+      setTokenError(
+        'No reset token found. Please use the link from your password reset email. ' +
+        'If the link has expired, request a new one.'
+      )
+      return
     }
-  }, [isAuthenticated, isLoading, navigate])
+
+    if (type !== 'recovery') {
+      setTokenError(
+        'This link is not a password reset link. Please use the link from your password reset email.'
+      )
+      return
+    }
+
+    setAccessToken(token)
+  }, [])
 
   const validate = (): string | null => {
-    if (!fullName.trim() || fullName.trim().length < 2) {
-      return 'Please enter your full name (at least 2 characters).'
-    }
-    if (!email.trim()) {
-      return 'Please enter your email address.'
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      return 'Please enter a valid email address.'
-    }
-    if (password.length < 8) {
-      return 'Password must be at least 8 characters long.'
-    }
-    if (!/[A-Z]/.test(password)) {
-      return 'Password must contain at least one uppercase letter.'
-    }
-    if (!/[a-z]/.test(password)) {
-      return 'Password must contain at least one lowercase letter.'
-    }
-    if (!/[0-9]/.test(password)) {
-      return 'Password must contain at least one number.'
-    }
-    if (password !== confirmPassword) {
-      return 'Passwords do not match. Please check and try again.'
-    }
+    if (newPassword.length < 8) return 'Password must be at least 8 characters long.'
+    if (!/[A-Z]/.test(newPassword)) return 'Password must contain at least one uppercase letter.'
+    if (!/[a-z]/.test(newPassword)) return 'Password must contain at least one lowercase letter.'
+    if (!/[0-9]/.test(newPassword)) return 'Password must contain at least one number.'
+    if (newPassword !== confirmPassword) return 'Passwords do not match.'
     return null
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    setSuccessMessage('')
 
     const validationError = validate()
     if (validationError) {
@@ -111,34 +105,54 @@ export default function RegisterPage() {
       return
     }
 
+    if (!accessToken) {
+      setError('Reset token is missing. Please use the link from your email.')
+      return
+    }
+
     setLoading(true)
     try {
-      const result = await register(email.trim(), password, fullName.trim())
-
-      if (result.emailConfirmationRequired) {
-        // Show confirmation message — don't navigate yet
-        setSuccessMessage(
-          result.message ||
-            `We've sent a confirmation email to ${email}. Please check your inbox.`
-        )
-      } else {
-        // Logged in immediately
-        navigate('/dashboard', { replace: true })
-      }
+      await api.post('/auth/reset-password', {
+        access_token: accessToken,
+        new_password: newPassword,
+      })
+      setSuccess(true)
     } catch (err: unknown) {
-      const message = extractErrorMessage(
-        err,
-        'Registration failed. Please try again.'
-      )
+      const message = extractErrorMessage(err, 'Password reset failed. Please try again.')
       setError(message)
-      console.error('[Register] Error:', err)
+      console.error('[ResetPassword] Error:', err)
     } finally {
       setLoading(false)
     }
   }
 
-  // Show email confirmation success screen
-  if (successMessage) {
+  // Token missing / invalid
+  if (tokenError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-8">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="w-full max-w-md text-center"
+        >
+          <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-6">
+            <AlertTriangle className="w-8 h-8 text-destructive" />
+          </div>
+          <h2 className="text-2xl font-bold text-foreground mb-3">Invalid reset link</h2>
+          <p className="text-muted-foreground leading-relaxed mb-8">{tokenError}</p>
+          <Link
+            to="/forgot-password"
+            className="inline-flex items-center gap-2 text-primary font-semibold hover:underline"
+          >
+            Request a new reset link
+          </Link>
+        </motion.div>
+      </div>
+    )
+  }
+
+  // Success screen
+  if (success) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-8">
         <motion.div
@@ -149,14 +163,18 @@ export default function RegisterPage() {
           <div className="w-16 h-16 rounded-full gradient-brand flex items-center justify-center mx-auto mb-6">
             <Check className="w-8 h-8 text-white" />
           </div>
-          <h2 className="text-2xl font-bold text-foreground mb-3">Check your email</h2>
-          <p className="text-muted-foreground leading-relaxed mb-6">{successMessage}</p>
-          <Link
-            to="/login"
-            className="text-primary font-semibold hover:underline text-sm"
+          <h2 className="text-2xl font-bold text-foreground mb-3">Password updated!</h2>
+          <p className="text-muted-foreground leading-relaxed mb-8">
+            Your password has been changed successfully. You can now sign in with your new password.
+          </p>
+          <Button
+            size="lg"
+            className="w-full"
+            onClick={() => navigate('/login', { replace: true })}
           >
-            Back to Sign In
-          </Link>
+            Sign in now
+            <ArrowRight className="w-4 h-4" />
+          </Button>
         </motion.div>
       </div>
     )
@@ -164,11 +182,11 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen flex bg-background">
-      {/* Left panel */}
+      {/* Left — Branding Panel */}
       <div className="hidden lg:flex lg:w-[45%] relative overflow-hidden">
         <div className="absolute inset-0 gradient-brand opacity-95" />
         <div className="absolute inset-0 gradient-mesh opacity-30" />
-        <div className="absolute top-1/4 right-10 w-64 h-64 rounded-full bg-white/5 blur-3xl animate-float" />
+        <div className="absolute top-1/3 right-10 w-64 h-64 rounded-full bg-white/5 blur-3xl animate-float" />
         <div className="relative z-10 flex flex-col justify-center p-12 text-white">
           <div className="flex items-center gap-3 mb-12">
             <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
@@ -177,36 +195,23 @@ export default function RegisterPage() {
             <span className="font-bold text-xl">StartupPilot AI</span>
           </div>
           <h1 className="text-4xl font-bold leading-tight mb-6">
-            Start your startup journey today
+            Create a new password
           </h1>
-          <p className="text-white/75 text-lg leading-relaxed mb-10">
-            Join thousands of entrepreneurs using AI to validate, plan, and launch their business ideas faster than ever before.
+          <p className="text-white/75 text-lg leading-relaxed">
+            Choose a strong password to keep your account secure. Make sure it's at least 8 characters with uppercase, lowercase, and a number.
           </p>
-          <div className="space-y-3">
-            {[
-              'Free to start, no credit card required',
-              '7 AI agents working on your business',
-              'PDF reports ready in minutes',
-              'Market research & financial forecasts',
-            ].map((feat) => (
-              <div key={feat} className="flex items-center gap-2">
-                <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center">
-                  <Check className="w-3 h-3 text-white" />
-                </div>
-                <span className="text-white/85 text-sm">{feat}</span>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
 
-      {/* Right — Register Form */}
+      {/* Right — Form */}
       <div className="flex-1 flex items-center justify-center p-8">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
           className="w-full max-w-md"
         >
+          {/* Mobile logo */}
           <div className="lg:hidden flex items-center gap-2 mb-8">
             <div className="w-9 h-9 rounded-xl gradient-brand flex items-center justify-center">
               <Rocket className="w-5 h-5 text-white" />
@@ -215,53 +220,23 @@ export default function RegisterPage() {
           </div>
 
           <div className="mb-8">
-            <h2 className="text-3xl font-bold text-foreground mb-2">Create your account</h2>
-            <p className="text-muted-foreground">Start building your business with AI in seconds</p>
+            <h2 className="text-3xl font-bold text-foreground mb-2">Set new password</h2>
+            <p className="text-muted-foreground">
+              Your new password must be at least 8 characters and include uppercase, lowercase, and a number.
+            </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Full Name */}
+            {/* New Password */}
             <div className="space-y-2">
-              <Label htmlFor="fullName">Full name</Label>
-              <Input
-                id="fullName"
-                type="text"
-                placeholder="John Smith"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                required
-                disabled={loading}
-                autoComplete="name"
-                className="h-11"
-              />
-            </div>
-
-            {/* Email */}
-            <div className="space-y-2">
-              <Label htmlFor="email">Email address</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                disabled={loading}
-                autoComplete="email"
-                className="h-11"
-              />
-            </div>
-
-            {/* Password */}
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="newPassword">New password</Label>
               <div className="relative">
                 <Input
-                  id="password"
+                  id="newPassword"
                   type={showPassword ? 'text' : 'password'}
                   placeholder="Create a strong password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
                   required
                   disabled={loading}
                   autoComplete="new-password"
@@ -277,24 +252,24 @@ export default function RegisterPage() {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              <PasswordStrength password={password} />
+              <PasswordStrength password={newPassword} />
             </div>
 
             {/* Confirm Password */}
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm password</Label>
+              <Label htmlFor="confirmPassword">Confirm new password</Label>
               <div className="relative">
                 <Input
                   id="confirmPassword"
                   type={showConfirm ? 'text' : 'password'}
-                  placeholder="Repeat your password"
+                  placeholder="Repeat your new password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   disabled={loading}
                   autoComplete="new-password"
                   className={`h-11 pr-10 ${
-                    confirmPassword && confirmPassword !== password
+                    confirmPassword && confirmPassword !== newPassword
                       ? 'border-destructive focus-visible:ring-destructive'
                       : ''
                   }`}
@@ -309,12 +284,11 @@ export default function RegisterPage() {
                   {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              {confirmPassword && confirmPassword !== password && (
+              {confirmPassword && confirmPassword !== newPassword && (
                 <p className="text-xs text-destructive">Passwords do not match</p>
               )}
             </div>
 
-            {/* Error */}
             {error && (
               <motion.div
                 initial={{ opacity: 0, y: -8 }}
@@ -333,15 +307,15 @@ export default function RegisterPage() {
               loading={loading}
               disabled={loading}
             >
-              Create free account
+              Update password
               <ArrowRight className="w-4 h-4" />
             </Button>
           </form>
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
-            Already have an account?{' '}
+            Remember your password?{' '}
             <Link to="/login" className="font-semibold text-primary hover:underline">
-              Sign in
+              Back to Sign In
             </Link>
           </p>
         </motion.div>

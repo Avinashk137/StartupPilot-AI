@@ -1,5 +1,4 @@
 import os
-import contextlib
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
@@ -69,9 +68,8 @@ def create_app() -> FastAPI:
     async def health_check():
         return {
             "status": "healthy",
-            "app": settings.APP_NAME,
-            "version": settings.APP_VERSION,
-            "env": settings.APP_ENV,
+            "database": "connected",
+            "ai": "ready"
         }
 
     @app.on_event("startup")

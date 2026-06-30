@@ -3,7 +3,7 @@ import time
 from typing import Optional
 import structlog
 from .base_provider import BaseAIProvider
-from .models import AIResponse
+from .models import AIResponse, ErrorType
 from ...core.config import settings
 
 logger = structlog.get_logger()
@@ -107,13 +107,20 @@ class GeminiProvider(BaseAIProvider):
             latency = (time.time() - start) * 1000
             err_str = str(e)
             
+            error_type = ErrorType.UNKNOWN
             # Clean up known Gemini errors
-            if "429" in err_str and "quota" in err_str.lower():
+            if "429" in err_str or "quota" in err_str.lower():
                 err_msg = "Gemini API quota exceeded."
+                error_type = ErrorType.RATE_LIMIT
             elif "API_KEY_INVALID" in err_str or "API key not valid" in err_str or "API key missing" in err_str:
                 err_msg = "Gemini API key missing or invalid."
+                error_type = ErrorType.UNAUTHORIZED
             elif "timeout" in err_str.lower():
                 err_msg = "Gemini API timeout."
+                error_type = ErrorType.TIMEOUT
+            elif "500" in err_str or "503" in err_str:
+                err_msg = "Gemini API server error."
+                error_type = ErrorType.SERVER_ERROR
             else:
                 err_msg = err_str.split("\n")[0]
                 if len(err_msg) > 100:
@@ -122,7 +129,7 @@ class GeminiProvider(BaseAIProvider):
             logger.error("Gemini generation failed", error=err_msg, full_error=err_str)
             return AIResponse(
                 content="", model=self._model, provider=self.provider_name,
-                latency_ms=latency, success=False, error=err_msg
+                latency_ms=latency, success=False, error=err_msg, error_type=error_type
             )
 
     async def is_available(self) -> bool:

@@ -63,7 +63,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 async def general_exception_handler(request: Request, exc: Exception):
-    logger.error("Unhandled exception", error=str(exc), path=request.url.path)
+    import traceback
+    logger.error("Unhandled exception", error=str(exc), path=request.url.path, traceback=traceback.format_exc())
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"success": False, "error": "Internal server error"},

@@ -1,12 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Rocket, Eye, EyeOff, ArrowRight, Zap, TrendingUp, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { useAuth } from '@/providers/auth-provider'
-import { cn } from '@/lib/utils'
+import { useAuth, extractErrorMessage } from '@/providers/auth-provider'
 
 const features = [
   { icon: Zap, text: '7 AI Agents working for you' },
@@ -20,18 +19,41 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const { login } = useAuth()
+  const { login, isAuthenticated, isLoading } = useAuth()
   const navigate = useNavigate()
+
+  // Redirect already-authenticated users away from login
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [isAuthenticated, isLoading, navigate])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+
+    // Basic client-side validation
+    if (!email.trim()) {
+      setError('Please enter your email address.')
+      return
+    }
+    if (!password) {
+      setError('Please enter your password.')
+      return
+    }
+
     setLoading(true)
     try {
-      await login(email, password)
-      navigate('/dashboard')
-    } catch (err: any) {
-      setError(err?.response?.data?.error || 'Invalid email or password')
+      await login(email.trim(), password)
+      navigate('/dashboard', { replace: true })
+    } catch (err: unknown) {
+      const message = extractErrorMessage(
+        err,
+        'Login failed. Please check your credentials and try again.'
+      )
+      setError(message)
+      console.error('[Login] Error:', err)
     } finally {
       setLoading(false)
     }
@@ -137,12 +159,23 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                disabled={loading}
+                autoComplete="email"
                 className="h-11"
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Password</Label>
+                <Link
+                  to="/forgot-password"
+                  className="text-xs text-primary hover:underline font-medium"
+                  tabIndex={-1}
+                >
+                  Forgot password?
+                </Link>
+              </div>
               <div className="relative">
                 <Input
                   id="password"
@@ -151,12 +184,16 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
+                  disabled={loading}
+                  autoComplete="current-password"
                   className="h-11 pr-10"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  tabIndex={-1}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -168,12 +205,13 @@ export default function LoginPage() {
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm"
+                role="alert"
               >
                 {error}
               </motion.div>
             )}
 
-            <Button type="submit" size="lg" className="w-full" loading={loading}>
+            <Button type="submit" size="lg" className="w-full" loading={loading} disabled={loading}>
               Sign in
               <ArrowRight className="w-4 h-4" />
             </Button>

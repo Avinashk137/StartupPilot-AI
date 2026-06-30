@@ -22,7 +22,6 @@ const navItems: NavItem[] = [
   { icon: FolderKanban, label: 'Projects', path: '/projects' },
   { icon: Bot, label: 'AI Agents', path: '/agents' },
   { icon: FileText, label: 'Reports', path: '/reports' },
-  { icon: BarChart3, label: 'Analytics', path: '/analytics' },
   { icon: Download, label: 'Exports', path: '/exports' },
   { icon: Bell, label: 'Notifications', path: '/notifications' },
 ]

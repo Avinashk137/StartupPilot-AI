@@ -128,10 +128,31 @@ export default function CreateProjectPage() {
         budget: form.budget ? parseFloat(form.budget) : null,
       }
       const { data } = await api.post('/projects', payload)
-      navigate(`/projects/${data.data.id}`)
+      const projectId = data.data.id
+
+      // Auto-trigger AI analysis immediately after project creation
+      // Fire-and-forget: if this fails, user can retry from the detail page
+      try {
+        await api.post(`/projects/${projectId}/run`)
+      } catch (runErr: any) {
+        // Non-critical — user can manually click "Run AI Analysis" on the detail page
+        console.warn('[CreateProject] Auto-run AI failed:', runErr?.response?.data?.detail || runErr?.message)
+      }
+
+      navigate(`/projects/${projectId}`)
     } catch (err: any) {
       console.error(err)
-      setErrors({ submit: err?.response?.data?.detail || 'Failed to create project. Please try again.' })
+      let errorMsg = 'Failed to create project. Please try again.'
+      const detail = err?.response?.data?.detail
+      if (typeof detail === 'string') {
+        errorMsg = detail
+      } else if (Array.isArray(detail)) {
+        errorMsg = detail.map((d: any) => {
+          const field = d.loc?.[d.loc.length - 1] || 'Field'
+          return `${field}: ${d.msg}`
+        }).join(' | ')
+      }
+      setErrors({ submit: errorMsg })
     } finally {
       setLoading(false)
     }

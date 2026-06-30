@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from ..core.dependencies import get_current_user
-from ..core.supabase_client import supabase_client
+from ..core.supabase_client import supabase_admin
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -8,41 +8,24 @@ router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 async def get_dashboard_stats(
     current_user = Depends(get_current_user),
 ):
-    # Fetch counts via count="exact"
-    total_res = supabase_client.table("projects").select("*", count="exact").eq("user_id", current_user.id).execute()
-    total_projects = total_res.count or 0
+    try:
+        # Fetch counts via count="exact"
+        total_res = supabase_admin.table("projects").select("*", count="exact").eq("user_id", current_user.id).execute()
+        total_projects = total_res.count or 0
 
-    completed_res = supabase_client.table("projects").select("*", count="exact").eq("user_id", current_user.id).eq("status", "completed").execute()
-    completed = completed_res.count or 0
+        completed_res = supabase_admin.table("projects").select("*", count="exact").eq("user_id", current_user.id).eq("status", "completed").execute()
+        completed = completed_res.count or 0
 
-    processing_res = supabase_client.table("projects").select("*", count="exact").eq("user_id", current_user.id).eq("status", "processing").execute()
-    processing = processing_res.count or 0
+        processing_res = supabase_admin.table("projects").select("*", count="exact").eq("user_id", current_user.id).eq("status", "processing").execute()
+        processing = processing_res.count or 0
 
-    unread_res = supabase_client.table("notifications").select("*", count="exact").eq("user_id", current_user.id).eq("is_read", False).execute()
-    unread = unread_res.count or 0
+        unread_res = supabase_admin.table("notifications").select("*", count="exact").eq("user_id", current_user.id).eq("is_read", False).execute()
+        unread = unread_res.count or 0
 
-    # Latest analytics scores
-    latest_scores = None
-    latest_project_res = supabase_client.table("projects").select("id, business_name").eq("user_id", current_user.id).eq("status", "completed").order("completed_at", desc=True).limit(1).execute()
-    
-    if latest_project_res.data:
-        latest = latest_project_res.data[0]
-        scores_res = supabase_client.table("analytics_reports").select("*").eq("project_id", latest["id"]).execute()
-        if scores_res.data:
-            scores_obj = scores_res.data[0]
-            latest_scores = {
-                "health_score": scores_obj.get("health_score", 0),
-                "market_opportunity_score": scores_obj.get("market_opportunity_score", 0),
-                "competition_score": scores_obj.get("competition_score", 0),
-                "financial_health_score": scores_obj.get("financial_health_score", 0),
-                "marketing_score": scores_obj.get("marketing_score", 0),
-                "readiness_score": scores_obj.get("readiness_score", 0),
-                "risk_score": scores_obj.get("risk_score", 0),
-                "growth_score": scores_obj.get("growth_score", 0),
-                "overall_score": scores_obj.get("overall_score", 0),
-                "project_name": latest.get("business_name", ""),
-                "project_id": latest["id"],
-            }
+        # Latest analytics scores removed as part of agent removal
+        latest_scores = None
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch dashboard stats: {e}")
 
     return {
         "success": True,
@@ -60,8 +43,12 @@ async def get_activity(
     limit: int = 20,
     current_user = Depends(get_current_user),
 ):
-    # Note: using foreign key embedding syntax. Assuming activity_timeline has foreign key to projects
-    result = supabase_client.table("activity_timeline").select("*, projects(business_name)").eq("user_id", current_user.id).order("created_at", desc=True).limit(limit).execute()
+    limit = max(1, min(limit, 100))
+    try:
+        # Note: using foreign key embedding syntax. Assuming activity_timeline has foreign key to projects
+        result = supabase_admin.table("activity_timeline").select("*, projects(business_name)").eq("user_id", current_user.id).order("created_at", desc=True).limit(limit).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch activity: {e}")
     
     activities = []
     for activity in result.data:
@@ -86,11 +73,15 @@ async def get_notifications(
     unread_only: bool = False,
     current_user = Depends(get_current_user),
 ):
-    query = supabase_client.table("notifications").select("*").eq("user_id", current_user.id)
-    if unread_only:
-        query = query.eq("is_read", False)
-    
-    result = query.order("created_at", desc=True).limit(limit).execute()
+    limit = max(1, min(limit, 100))
+    try:
+        query = supabase_admin.table("notifications").select("*").eq("user_id", current_user.id)
+        if unread_only:
+            query = query.eq("is_read", False)
+        
+        result = query.order("created_at", desc=True).limit(limit).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch notifications: {e}")
 
     data = []
     for n in result.data:
@@ -111,13 +102,19 @@ async def mark_notification_read(
     notification_id: str,
     current_user = Depends(get_current_user),
 ):
-    supabase_client.table("notifications").update({"is_read": True}).eq("id", notification_id).eq("user_id", current_user.id).execute()
+    try:
+        supabase_admin.table("notifications").update({"is_read": True}).eq("id", notification_id).eq("user_id", current_user.id).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to mark notification as read: {e}")
     return {"success": True, "message": "Marked as read"}
 
 @router.put("/notifications/read-all")
 async def mark_all_read(
     current_user = Depends(get_current_user),
 ):
-    res = supabase_client.table("notifications").update({"is_read": True}).eq("user_id", current_user.id).eq("is_read", False).execute()
+    try:
+        res = supabase_admin.table("notifications").update({"is_read": True}).eq("user_id", current_user.id).eq("is_read", False).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to mark notifications as read: {e}")
     count = len(res.data) if res.data else 0
     return {"success": True, "message": f"Marked {count} notifications as read"}

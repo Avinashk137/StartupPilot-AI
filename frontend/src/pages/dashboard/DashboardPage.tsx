@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import {
-  TrendingUp, Users, Target, DollarSign, Megaphone,
-  Rocket, AlertTriangle, BarChart3, Plus, ArrowRight,
+  Rocket, Plus, ArrowRight,
   CheckCircle, Clock, Loader, XCircle, Activity, Bell
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -11,92 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { cn, formatRelativeTime, getScoreColor } from '@/lib/utils'
 import api from '@/lib/api'
-
-// ── Score Card ───────────────────────────────────────────
-function ScoreCard({
-  label, score, icon: Icon, color, delay = 0
-}: {
-  label: string
-  score: number
-  icon: React.ComponentType<{ className?: string }>
-  color: string
-  delay?: number
-}) {
-  const [displayScore, setDisplayScore] = useState(0)
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      let current = 0
-      const increment = score / 40
-      const interval = setInterval(() => {
-        current += increment
-        if (current >= score) {
-          setDisplayScore(score)
-          clearInterval(interval)
-        } else {
-          setDisplayScore(Math.floor(current))
-        }
-      }, 20)
-      return () => clearInterval(interval)
-    }, delay)
-    return () => clearTimeout(timer)
-  }, [score, delay])
-
-  const radius = 32
-  const circumference = 2 * Math.PI * radius
-  const offset = circumference - (displayScore / 100) * circumference
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: delay / 1000 + 0.1, duration: 0.4 }}
-    >
-      <Card className="card-hover overflow-hidden relative">
-        <div className={`absolute top-0 left-0 right-0 h-0.5 ${color}`} />
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between mb-3">
-            <div className={`w-9 h-9 rounded-lg ${color} bg-opacity-15 flex items-center justify-center`}>
-              <Icon className={`w-4 h-4 ${color.replace('bg-', 'text-')}`} />
-            </div>
-            <svg width="80" height="80" className="score-ring -mt-1 -mr-1">
-              <circle
-                cx="40" cy="40" r={radius}
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="5"
-                className="text-muted/30"
-              />
-              <circle
-                cx="40" cy="40" r={radius}
-                fill="none"
-                strokeWidth="5"
-                strokeDasharray={circumference}
-                strokeDashoffset={offset}
-                strokeLinecap="round"
-                className={color.replace('bg-', 'stroke-')}
-                style={{ transition: 'stroke-dashoffset 1.5s ease-out' }}
-              />
-              <text
-                x="40" y="44"
-                textAnchor="middle"
-                fontSize="14"
-                fontWeight="700"
-                fill="currentColor"
-                className="text-foreground"
-                style={{ transform: 'rotate(90deg)', transformOrigin: '40px 40px' }}
-              >
-                {displayScore}
-              </text>
-            </svg>
-          </div>
-          <p className="text-sm font-medium text-foreground">{label}</p>
-          <Progress value={displayScore} className="h-1 mt-2" />
-        </CardContent>
-      </Card>
-    </motion.div>
-  )
-}
+import { Breadcrumb } from '@/components/navigation/Breadcrumb'
 
 // ── Status Badge ─────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
@@ -147,18 +61,7 @@ export default function DashboardPage() {
     loadDashboard()
   }, [])
 
-  const scores = stats?.latest_scores
 
-  const scoreCards = [
-    { label: 'Business Health', score: scores?.health_score || 0, icon: Activity, color: 'bg-emerald-500', delay: 0 },
-    { label: 'Market Opportunity', score: scores?.market_opportunity_score || 0, icon: TrendingUp, color: 'bg-blue-500', delay: 100 },
-    { label: 'Competition', score: scores?.competition_score || 0, icon: Users, color: 'bg-violet-500', delay: 200 },
-    { label: 'Financial Health', score: scores?.financial_health_score || 0, icon: DollarSign, color: 'bg-amber-500', delay: 300 },
-    { label: 'Marketing Score', score: scores?.marketing_score || 0, icon: Megaphone, color: 'bg-pink-500', delay: 400 },
-    { label: 'Startup Readiness', score: scores?.readiness_score || 0, icon: Rocket, color: 'bg-cyan-500', delay: 500 },
-    { label: 'Risk Score', score: scores?.risk_score || 0, icon: AlertTriangle, color: 'bg-orange-500', delay: 600 },
-    { label: 'Growth Score', score: scores?.growth_score || 0, icon: Target, color: 'bg-indigo-500', delay: 700 },
-  ]
 
   if (loading) {
     return (
@@ -179,11 +82,12 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8 max-w-7xl">
+      <Breadcrumb currentPage="Dashboard" />
       {/* ── Header ──────────────────────────────────────────── */}
       <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }}>
         <h1 className="text-2xl font-bold text-foreground">CEO Dashboard</h1>
         <p className="text-muted-foreground mt-1">
-          {scores ? `Showing scores for: ${scores.project_name}` : 'Run your first AI analysis to see scores'}
+          Welcome back to StartupPilot AI
         </p>
       </motion.div>
 
@@ -216,44 +120,8 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* ── Score Cards ──────────────────────────────────────── */}
-      {scores ? (
-        <>
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-foreground">Business Intelligence Scores</h2>
-              <Link to={`/projects/${scores.project_id}/reports/analytics`}>
-                <Button variant="ghost" size="sm" className="gap-1">
-                  Full Report <ArrowRight className="w-3.5 h-3.5" />
-                </Button>
-              </Link>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {scoreCards.map((card) => (
-                <ScoreCard key={card.label} {...card} />
-              ))}
-            </div>
-          </div>
-          {/* Overall Score Banner */}
-          <Card className="overflow-hidden">
-            <div className="gradient-brand p-5 text-white flex items-center justify-between">
-              <div>
-                <p className="text-white/70 text-sm font-medium">Overall Startup Score</p>
-                <p className="text-5xl font-bold mt-1">{Math.round(scores.overall_score)}</p>
-                <p className="text-white/70 text-sm mt-1">out of 100</p>
-              </div>
-              <div className="text-right">
-                <BarChart3 className="w-16 h-16 text-white/20 ml-auto mb-2" />
-                <Link to={`/projects/${scores.project_id}/reports/analytics`}>
-                  <Button variant="glass" size="sm" className="border-white/30 text-white hover:bg-white/20">
-                    View CEO Report
-                  </Button>
-                </Link>
-              </div>
-            </div>
-          </Card>
-        </>
-      ) : (
+      {/* ── Call To Action ──────────────────────────────────────── */}
+      {(!stats?.total_projects) && (
         <Card>
           <CardContent className="py-16 flex flex-col items-center text-center gap-4">
             <div className="w-16 h-16 rounded-2xl gradient-brand flex items-center justify-center">

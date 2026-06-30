@@ -11,21 +11,34 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true)
 
   const load = async () => {
-    const { data } = await api.get('/dashboard/notifications?limit=50')
-    setNotifications(data.data)
-    setLoading(false)
+    try {
+      const { data } = await api.get('/dashboard/notifications?limit=50')
+      setNotifications(data.data)
+    } catch (err) {
+      console.error('Failed to load notifications:', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => { load() }, [])
 
   const markAllRead = async () => {
-    await api.put('/dashboard/notifications/read-all')
-    load()
+    try {
+      await api.put('/dashboard/notifications/read-all')
+      load()
+    } catch (err) {
+      console.error('Failed to mark all notifications as read:', err)
+    }
   }
 
   const markRead = async (id: number) => {
-    await api.put(`/dashboard/notifications/${id}/read`)
-    load()
+    try {
+      await api.put(`/dashboard/notifications/${id}/read`)
+      load()
+    } catch (err) {
+      console.error('Failed to mark notification as read:', err)
+    }
   }
 
   const icons = {

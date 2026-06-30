@@ -8,8 +8,6 @@ const agents = [
   { name: 'Business Plan Agent', role: 'Business Strategy Consultant', icon: '📋', color: 'bg-emerald-500' },
   { name: 'Finance Agent', role: 'CFO Advisor', icon: '💰', color: 'bg-amber-500' },
   { name: 'Marketing Agent', role: 'Chief Marketing Officer', icon: '📣', color: 'bg-pink-500' },
-  { name: 'Advertisement Agent', role: 'Performance Marketing Expert', icon: '📺', color: 'bg-cyan-500' },
-  { name: 'Analytics Agent', role: 'AI CEO & Business Intelligence', icon: '📊', color: 'bg-indigo-500' },
 ]
 
 export default function AgentsPage() {

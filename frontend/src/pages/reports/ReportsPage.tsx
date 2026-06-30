@@ -9,8 +9,6 @@ const reportTypes = [
   { icon: FileText, label: 'Business Plan', desc: 'Executive summary, strategy, roadmap', color: 'bg-emerald-500', key: 'business_plan' },
   { icon: DollarSign, label: 'Financial Report', desc: 'Forecasts, cashflow, break-even', color: 'bg-amber-500', key: 'finance' },
   { icon: Megaphone, label: 'Marketing Strategy', desc: 'Social posts, campaigns, SEO', color: 'bg-pink-500', key: 'marketing' },
-  { icon: BarChart3, label: 'Advertisements', desc: 'Ad copy, campaigns, budgets', color: 'bg-cyan-500', key: 'advertisement' },
-  { icon: Target, label: 'CEO Analytics', desc: 'Scores, recommendations, alerts', color: 'bg-indigo-500', key: 'analytics' },
 ]
 
 export default function ReportsPage() {

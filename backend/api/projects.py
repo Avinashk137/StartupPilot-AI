@@ -1,27 +1,30 @@
+import traceback
+
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi.responses import JSONResponse
 from typing import Optional, List
 from datetime import datetime, timezone
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..core.dependencies import get_current_user
 from ..core.exceptions import NotFoundException, ForbiddenException
-from ..core.supabase_client import supabase_client
+from ..core.supabase_client import supabase_admin
 
 router = APIRouter(prefix="/projects", tags=["Projects"])
 
 class ProjectCreate(BaseModel):
-    business_name: str
-    business_idea: str
-    industry: str
-    country: str
+    business_name: str = Field(..., min_length=2, max_length=100)
+    business_idea: str = Field(..., min_length=10)
+    industry: str = Field(..., min_length=2)
+    country: str = Field(..., min_length=2)
     state: Optional[str] = None
     target_audience: Optional[str] = None
-    budget: Optional[float] = None
+    budget: Optional[float] = Field(None, gt=0)
     budget_currency: str = "INR"
     goals: Optional[str] = None
-    business_stage: str = "idea"
-    risk_appetite: str = "medium"
-    timeline: Optional[str] = None
+    business_stage: str = Field("idea", pattern="^(idea|validation|early_stage|growth|scaling)$")
+    risk_appetite: str = Field("medium", pattern="^(low|medium|high)$")
+    timeline: Optional[str] = Field(None, min_length=2)
 
 class ProjectUpdate(BaseModel):
     business_name: Optional[str] = None
@@ -45,7 +48,7 @@ async def list_projects(
     current_user = Depends(get_current_user),
 ):
     try:
-        query = supabase_client.table("projects").select("*", count="exact").eq("user_id", current_user.id)
+        query = supabase_admin.table("projects").select("*", count="exact").eq("user_id", current_user.id)
         if status:
             query = query.eq("status", status)
         
@@ -76,13 +79,13 @@ async def create_project(
         insert_data["status"] = "draft"
         insert_data["progress_percent"] = 0
         
-        res = supabase_client.table("projects").insert(insert_data).execute()
+        res = supabase_admin.table("projects").insert(insert_data).execute()
         if not res.data:
             raise Exception("Failed to create project")
         project = res.data[0]
 
         # Log activity
-        supabase_client.table("activity_timeline").insert({
+        supabase_admin.table("activity_timeline").insert({
             "project_id": project["id"],
             "user_id": current_user.id,
             "action": "Project Created",
@@ -92,14 +95,28 @@ async def create_project(
 
         return {"success": True, "data": project, "message": "Project created successfully"}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        err_msg = str(e)
+        detail = "Failed to create project."
+        
+        if "violates row-level security policy" in err_msg:
+            detail = "Permission denied: Your account does not have authorization to create projects."
+        elif "does not exist" in err_msg:
+            detail = "Database configuration error: A required column or table is missing."
+        else:
+            detail = f"Database insertion failed: {err_msg}"
+            
+        traceback.print_exc()
+        raise HTTPException(status_code=400, detail=detail)
 
 @router.get("/{project_id}")
 async def get_project(
     project_id: str,
     current_user = Depends(get_current_user),
 ):
-    res = supabase_client.table("projects").select("*").eq("id", project_id).execute()
+    try:
+        res = supabase_admin.table("projects").select("*").eq("id", project_id).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch project: {e}")
     if not res.data:
         raise NotFoundException("Project", project_id)
     project = res.data[0]
@@ -117,7 +134,10 @@ async def update_project(
     request: ProjectUpdate,
     current_user = Depends(get_current_user),
 ):
-    res = supabase_client.table("projects").select("*").eq("id", project_id).execute()
+    try:
+        res = supabase_admin.table("projects").select("*").eq("id", project_id).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch project: {e}")
     if not res.data:
         raise NotFoundException("Project", project_id)
     project = res.data[0]
@@ -127,7 +147,10 @@ async def update_project(
 
     update_data = request.model_dump(exclude_none=True)
     if update_data:
-        res = supabase_client.table("projects").update(update_data).eq("id", project_id).execute()
+        try:
+            res = supabase_admin.table("projects").update(update_data).eq("id", project_id).execute()
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to update project: {e}")
         if res.data:
             project = res.data[0]
 
@@ -138,13 +161,19 @@ async def delete_project(
     project_id: str,
     current_user = Depends(get_current_user),
 ):
-    res = supabase_client.table("projects").select("user_id").eq("id", project_id).execute()
+    try:
+        res = supabase_admin.table("projects").select("user_id").eq("id", project_id).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch project: {e}")
     if not res.data:
         raise NotFoundException("Project", project_id)
     if str(res.data[0].get("user_id")) != str(current_user.id):
         raise ForbiddenException()
 
-    supabase_client.table("projects").delete().eq("id", project_id).execute()
+    try:
+        supabase_admin.table("projects").delete().eq("id", project_id).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete project: {e}")
     return {"success": True, "message": "Project deleted successfully"}
 
 @router.post("/{project_id}/run")
@@ -154,63 +183,145 @@ async def run_agents(
     current_user = Depends(get_current_user),
 ):
     """Trigger the AI agent pipeline for a project"""
-    res = supabase_client.table("projects").select("*").eq("id", project_id).execute()
-    if not res.data:
-        raise NotFoundException("Project", project_id)
-    project = res.data[0]
+    import uuid
+    import structlog
+    import json
+    
+    req_logger = structlog.get_logger()
+    req_logger.info("Request received: Run AI Analysis", project_id=project_id, user_id=str(current_user.id))
 
-    if str(project.get("user_id")) != str(current_user.id):
-        raise ForbiddenException()
+    try:
+        try:
+            res = supabase_admin.table("projects").select("*").eq("id", project_id).execute()
+        except Exception as db_err:
+            req_logger.error("Database connection failed while fetching project", error=str(db_err))
+            return JSONResponse(status_code=500, content={"success": False, "error": "Database connection failed", "details": str(db_err)[:200]})
+            
+        if not res.data:
+            raise NotFoundException("Project", project_id)
+        project = res.data[0]
+        
+        req_logger.info("Project loaded successfully", project_id=project_id)
 
-    if project.get("status") == "processing":
-        raise HTTPException(status_code=400, detail="Project is already being processed")
+        if str(project.get("user_id")) != str(current_user.id):
+            raise ForbiddenException()
 
-    # Note: orchestrator.run() will set status to 'processing' itself
-    # Schedule async background task — FastAPI handles async background tasks natively
-    background_tasks.add_task(_run_agent_pipeline, project)
+        if project.get("status") == "processing":
+            raise HTTPException(status_code=400, detail="Project is already being processed")
 
-    return {
-        "success": True,
-        "message": "AI analysis started. This will take 3-5 minutes.",
-        "project_id": project_id,
-    }
+        job_id = str(uuid.uuid4())
+        
+        # Ensure diagnostics is a dict
+        diagnostics = project.get("ai_diagnostics")
+        if isinstance(diagnostics, str):
+            try:
+                diagnostics = json.loads(diagnostics)
+            except Exception:
+                diagnostics = {}
+        elif not isinstance(diagnostics, dict):
+            diagnostics = {}
+            
+        diagnostics["current_job_id"] = job_id
+        
+        # Attempt to update ai_diagnostics and status
+        try:
+            supabase_admin.table("projects").update({
+                "ai_diagnostics": diagnostics,
+                "status": "processing"
+            }).eq("id", project_id).execute()
+            req_logger.info("Updated project status to processing with diagnostics", project_id=project_id)
+        except Exception as update_err:
+            req_logger.warning("Failed to update ai_diagnostics (possibly missing column), falling back to status only", error=str(update_err))
+            try:
+                supabase_admin.table("projects").update({
+                    "status": "processing"
+                }).eq("id", project_id).execute()
+                req_logger.info("Updated project status to processing (fallback successful)", project_id=project_id)
+            except Exception as fallback_err:
+                req_logger.error("Failed to update project status in fallback", error=str(fallback_err))
+                return JSONResponse(status_code=500, content={"success": False, "error": "Database write failed", "details": str(fallback_err)[:200]})
+
+        # Schedule async background task
+        background_tasks.add_task(_run_agent_pipeline, project, job_id)
+
+        return {
+            "success": True,
+            "message": "AI analysis started. Agents are running sequentially.",
+            "project_id": project_id,
+            "job_id": job_id,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        req_logger.error("Failed to start analysis", error=str(e), exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "agent": "Orchestrator",
+                "error": f"Failed to start analysis: {str(e)[:200]}"
+            }
+        )
 
 @router.get("/{project_id}/status")
 async def get_project_status(
     project_id: str,
     current_user = Depends(get_current_user),
 ):
-    res = supabase_client.table("projects").select("status, progress_percent, current_agent, error_message, completed_at").eq("id", project_id).execute()
+    res = supabase_admin.table("projects").select("*").eq("id", project_id).eq("user_id", str(current_user.id)).execute()
     if not res.data:
         raise NotFoundException("Project", project_id)
+        
+    project = res.data[0]
+    
+    # Compute if data has been modified since last successful run
+    is_modified = False
+    from ..agents.orchestrator import AgentOrchestrator
+    orchestrator = AgentOrchestrator(supabase_admin)
+    current_hash = orchestrator._compute_input_hash(project)
+    
+    if project.get("input_hash") and project.get("input_hash") != current_hash:
+        is_modified = True
 
     return {
         "success": True,
-        "data": res.data[0],
+        "data": {
+            "status": project.get("status"),
+            "progress_percent": project.get("progress_percent"),
+            "current_agent": project.get("current_agent"),
+            "error_message": project.get("error_message"),
+            "completed_at": project.get("completed_at"),
+            "user_id": project.get("user_id"),
+            "is_modified": is_modified,
+            "job_id": (project.get("ai_diagnostics") or {}).get("current_job_id")
+        },
     }
 
-async def _run_agent_pipeline(project: dict):
-    """Async background task to run the agent pipeline.
-    FastAPI BackgroundTasks fully supports async functions.
+async def _run_agent_pipeline(project: dict, job_id: str):
+    """
+    Async background task for the AI agent pipeline.
+    Uses supabase_admin (service role) to bypass RLS for server-side writes.
     """
     import structlog
     bg_logger = structlog.get_logger()
     from ..agents.orchestrator import AgentOrchestrator
 
     project_id = project.get("id")
-    bg_logger.info("Background pipeline starting", project_id=project_id)
+    bg_logger.info("Background pipeline starting", project_id=project_id, job_id=job_id)
 
-    orchestrator = AgentOrchestrator(supabase_client)
+    orchestrator = AgentOrchestrator(supabase_admin)
     try:
-        await orchestrator.run(project)
-        bg_logger.info("Background pipeline finished", project_id=project_id)
+        await orchestrator.run(project, job_id=job_id)
+        bg_logger.info("Background pipeline finished", project_id=project_id, job_id=job_id)
     except Exception as e:
-        bg_logger.error("Background pipeline crashed", project_id=project_id, error=str(e))
+        bg_logger.error("Background pipeline crashed", project_id=project_id, job_id=job_id, error=str(e))
         try:
-            supabase_client.table("projects").update({
+            supabase_admin.table("projects").update({
                 "status": "failed",
                 "error_message": f"Pipeline error: {str(e)[:500]}",
                 "current_agent": None,
             }).eq("id", project_id).execute()
         except Exception:
-            pass  # Don't let error reporting crash the server
+            pass
+
+

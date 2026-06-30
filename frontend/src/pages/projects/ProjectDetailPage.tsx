@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Play, FileText, BarChart3, Bot, Clock, Globe, DollarSign,
@@ -11,47 +11,52 @@ import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { cn, formatDate, formatCurrency } from '@/lib/utils'
 import api from '@/lib/api'
-
+import { Breadcrumb } from '@/components/navigation/Breadcrumb'
 const AGENT_INFO: Record<string, { label: string; desc: string; icon: string }> = {
   research: { label: 'Research Agent', desc: 'Market size, trends, opportunities', icon: '🔍' },
   competitor: { label: 'Competitor Agent', desc: 'Competitor analysis & SWOT', icon: '🎯' },
   business_plan: { label: 'Business Plan Agent', desc: 'Full business plan creation', icon: '📋' },
   finance: { label: 'Finance Agent', desc: 'Financial forecasts & charts', icon: '💰' },
   marketing: { label: 'Marketing Agent', desc: 'Social posts & strategy', icon: '📣' },
-  advertisement: { label: 'Advertisement Agent', desc: 'Ad copy & campaigns', icon: '📺' },
-  analytics: { label: 'Analytics Agent', desc: 'CEO scores & recommendations', icon: '📊' },
 }
 
 const REPORT_LINKS = [
   { key: 'research', label: 'Market Research', icon: TrendingUp, path: 'research' },
   { key: 'competitor', label: 'Competitor Analysis', icon: BarChart3, path: 'competitor' },
   { key: 'business_plan', label: 'Business Plan', icon: FileText, path: 'business-plan' },
-  { key: 'finance', label: 'Financial Report', icon: DollarSign, path: 'finance' },
+  { key: 'finance', label: 'Financial Report', icon: DollarSign, path: 'financial' },
   { key: 'marketing', label: 'Marketing Strategy', icon: Globe, path: 'marketing' },
-  { key: 'advertisement', label: 'Advertisements', icon: Play, path: 'advertisement' },
-  { key: 'analytics', label: 'CEO Analytics', icon: BarChart3, path: 'analytics' },
 ]
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [project, setProject] = useState<any>(null)
+  const [projectStatus, setProjectStatus] = useState<any>(null)
   const [reports, setReports] = useState<any>({})
   const [agentLogs, setAgentLogs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
-  const [activeTab, setActiveTab] = useState('overview')
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'overview')
+  const [runError, setRunError] = useState<string | null>(null)
+  const [regeneratingReport, setRegeneratingReport] = useState<string | null>(null)
+  const pollingRef = useRef<any>(null)
 
   const loadProject = async () => {
     try {
-      const [projRes, logsRes] = await Promise.all([
+      const [projRes, logsRes, statusRes] = await Promise.all([
         api.get(`/projects/${id}`),
         api.get(`/projects/${id}/agent-logs`),
+        api.get(`/projects/${id}/status`)
       ])
-      setProject(projRes.data.data)
+      
+      const projData = projRes.data.data
+      setProject(projData)
       setAgentLogs(logsRes.data.data)
+      setProjectStatus(statusRes.data.data)
 
-      if (projRes.data.data.status === 'completed') {
+      if (projData.status === 'completed' || projData.status === 'failed') {
         const reportsRes = await api.get(`/projects/${id}/reports`)
         setReports(reportsRes.data.data)
       }
@@ -62,27 +67,81 @@ export default function ProjectDetailPage() {
     }
   }
 
+  const pollStatus = async () => {
+    try {
+      const [statusRes, logsRes] = await Promise.all([
+        api.get(`/projects/${id}/status`),
+        api.get(`/projects/${id}/agent-logs`)
+      ])
+      
+      const s = statusRes.data.data
+      setProjectStatus(s)
+      setAgentLogs(logsRes.data.data)
+      
+      setProject((p: any) => p ? {
+        ...p,
+        status: s.status,
+        progress_percent: s.progress_percent,
+        current_agent: s.current_agent,
+        error_message: s.error_message
+      } : p)
+
+      const reportsRes = await api.get(`/projects/${id}/reports`)
+      const reps = reportsRes.data.data
+      setReports(reps)
+      
+      const anyRunning = Object.values(reps).some((r: any) => r.status === 'running')
+      const anyGlobalProcessing = s.status === 'processing'
+
+      if (!anyGlobalProcessing && !anyRunning) {
+        clearInterval(pollingRef.current)
+        setRunning(false)
+        setRegeneratingReport(null)
+      }
+    } catch (e) {
+      console.error("Polling error", e)
+    }
+  }
+
   useEffect(() => {
     loadProject()
+    return () => clearInterval(pollingRef.current)
   }, [id])
 
-  // Poll when processing
   useEffect(() => {
     if (project?.status === 'processing') {
-      const interval = setInterval(loadProject, 3000)
-      return () => clearInterval(interval)
+      pollingRef.current = setInterval(pollStatus, 2000)
     }
+    return () => clearInterval(pollingRef.current)
   }, [project?.status])
 
   const handleRun = async () => {
+    if (running || project?.status === 'processing') return
+    
     setRunning(true)
+    setRunError(null)
     try {
       await api.post(`/projects/${id}/run`)
-      setTimeout(loadProject, 1000)
+      // Immediately start polling
+      pollingRef.current = setInterval(pollStatus, 2000)
     } catch (err: any) {
-      alert(err?.response?.data?.error || 'Failed to start analysis')
-    } finally {
+      const msg = err?.response?.data?.detail || err?.message || 'Failed to start analysis'
+      setRunError(msg)
       setRunning(false)
+    }
+  }
+
+  const handleRegenerate = async (reportPath: string) => {
+    if (regeneratingReport) return
+    
+    setRegeneratingReport(reportPath)
+    try {
+      await api.post(`/projects/${id}/reports/${reportPath}/regenerate`)
+      clearInterval(pollingRef.current)
+      pollingRef.current = setInterval(pollStatus, 2000)
+    } catch (err: any) {
+      console.error("Failed to regenerate report:", err)
+      setRegeneratingReport(null)
     }
   }
 
@@ -100,10 +159,15 @@ export default function ProjectDetailPage() {
 
   const isProcessing = project.status === 'processing'
   const isCompleted = project.status === 'completed'
-  const isDraft = project.status === 'draft' || project.status === 'failed'
+  const isDraft = project.status === 'draft'
+  const isFailed = project.status === 'failed'
+  
+  const canReanalyze = isCompleted && projectStatus?.is_modified
 
   return (
     <div className="space-y-6 max-w-5xl">
+      <Breadcrumb projectId={id} projectName={project?.business_name} currentPage="Project Detail" />
+      
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
         <div className="flex items-center gap-2">
@@ -136,10 +200,10 @@ export default function ProjectDetailPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {isDraft && (
-              <Button onClick={handleRun} loading={running} className="gap-2">
+            {(isDraft || isFailed) && (
+              <Button onClick={handleRun} disabled={running || isProcessing} className="gap-2">
                 <Play className="w-4 h-4" />
-                Run AI Analysis
+                {isFailed ? 'Resume Analysis' : 'Run AI Analysis'}
               </Button>
             )}
             {isProcessing && (
@@ -148,10 +212,10 @@ export default function ProjectDetailPage() {
                 Analyzing...
               </Button>
             )}
-            {isCompleted && (
-              <Button variant="outline" onClick={handleRun} loading={running} size="sm" className="gap-2">
+            {canReanalyze && !isProcessing && (
+              <Button variant="outline" onClick={handleRun} disabled={running} size="sm" className="gap-2 border-primary/50 text-primary hover:bg-primary/5">
                 <RefreshCw className="w-3.5 h-3.5" />
-                Re-analyze
+                Apply Updates & Re-analyze
               </Button>
             )}
           </div>
@@ -159,23 +223,76 @@ export default function ProjectDetailPage() {
 
         {/* Progress */}
         {isProcessing && (
-          <Card>
-            <CardContent className="py-4 px-5">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <Loader className="w-4 h-4 animate-spin text-primary" />
-                  <span className="text-sm font-medium">
-                    {project.current_agent
-                      ? `Running: ${AGENT_INFO[project.current_agent]?.label || project.current_agent}`
-                      : 'Starting analysis...'}
-                  </span>
+          <Card className="border-primary/20 bg-primary/5">
+            <CardContent className="py-5 px-6">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Loader className="w-4 h-4 animate-spin text-primary" />
+                  </div>
+                  <div>
+                    <span className="text-sm font-bold text-foreground">
+                      {project.current_agent
+                        ? `Running: ${AGENT_INFO[project.current_agent]?.label || project.current_agent}`
+                        : 'Starting analysis...'}
+                    </span>
+                    <p className="text-xs text-muted-foreground">5 AI agents working sequentially. This takes 2-3 minutes.</p>
+                  </div>
                 </div>
-                <span className="text-sm font-bold text-primary">{project.progress_percent}%</span>
+                <div className="text-right">
+                  <span className="text-2xl font-black text-primary">{project.progress_percent}%</span>
+                </div>
               </div>
-              <Progress value={project.progress_percent} />
-              <p className="text-xs text-muted-foreground mt-2">
-                🤖 7 AI agents working on your business blueprint. This takes 3-5 minutes.
-              </p>
+              <Progress value={project.progress_percent} className="h-2.5 bg-primary/10" />
+              
+              <div className="flex justify-between items-center mt-4 pt-4 border-t border-primary/10">
+                {Object.keys(AGENT_INFO).map((key, i) => {
+                  const log = agentLogs.find(l => l.agent_name === key)
+                  const isCurrent = project.current_agent === key
+                  const isDone = log?.status === 'completed'
+                  const isFailed = log?.status === 'failed'
+                  let icon = <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] text-muted-foreground">{i + 1}</div>
+                  if (isDone) icon = <CheckCircle className="w-5 h-5 text-emerald-500" />
+                  if (isFailed) icon = <XCircle className="w-5 h-5 text-destructive" />
+                  if (isCurrent) icon = <Loader className="w-5 h-5 text-primary animate-spin" />
+                  return (
+                    <div key={key} className={cn("flex flex-col items-center gap-1.5 opacity-50 transition-opacity", (isCurrent || isDone) && "opacity-100")}>
+                      {icon}
+                      <span className="text-[10px] font-medium uppercase tracking-wider">{key.split('_')[0]}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Show project error when status is failed */}
+        {project.status === 'failed' && project.error_message && (
+          <Card className="border-destructive/50 bg-destructive/5">
+            <CardContent className="py-3 px-5">
+              <div className="flex items-start gap-3">
+                <XCircle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-destructive">Analysis Failed</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{project.error_message}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Run button error feedback */}
+        {runError && (
+          <Card className="border-destructive/50 bg-destructive/5">
+            <CardContent className="py-3 px-5">
+              <div className="flex items-start gap-3">
+                <XCircle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-destructive">Could not start analysis</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{runError}</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -226,33 +343,63 @@ export default function ProjectDetailPage() {
             {REPORT_LINKS.map((report) => {
               const reportData = reports[report.key]
               const available = reportData?.available
+              const repStatus = reportData?.status || 'pending'
+              const isRepRunning = repStatus === 'running' || regeneratingReport === report.path || (isProcessing && project.current_agent === report.key)
+              const isRepFailed = repStatus === 'failed'
 
               return (
-                <Card key={report.key} className={cn('card-hover', !available && 'opacity-60')}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="w-9 h-9 rounded-lg gradient-brand bg-opacity-10 flex items-center justify-center">
-                        <report.icon className="w-4 h-4 text-primary" />
+                <Card key={report.key} className={cn('transition-all hover:shadow-md border-border', (!available && !isRepFailed && !isRepRunning) && 'opacity-70')}>
+                  <CardContent className="p-5 flex flex-col h-full">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", available ? "bg-primary/10" : isRepFailed ? "bg-destructive/10" : "bg-muted")}>
+                        <report.icon className={cn("w-5 h-5", available ? "text-primary" : isRepFailed ? "text-destructive" : "text-muted-foreground")} />
                       </div>
                       {available ? (
-                        <CheckCircle className="w-4 h-4 text-green-500" />
-                      ) : isProcessing ? (
-                        <Loader className="w-4 h-4 text-muted-foreground animate-spin" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full dark:bg-emerald-950/30 dark:text-emerald-400">Completed</span>
+                      ) : isRepFailed ? (
+                        <span className="text-[10px] font-bold uppercase tracking-wider bg-destructive/10 text-destructive px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <XCircle className="w-3 h-3" /> Failed
+                        </span>
+                      ) : isRepRunning ? (
+                        <span className="text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full flex items-center gap-1 dark:bg-blue-950/30 dark:text-blue-400">
+                          <Loader className="w-3 h-3 animate-spin" /> {regeneratingReport === report.path ? 'Regenerating' : 'Running'}
+                        </span>
                       ) : (
-                        <Clock className="w-4 h-4 text-muted-foreground" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider bg-muted text-muted-foreground px-2 py-0.5 rounded-full">Pending</span>
                       )}
                     </div>
-                    <p className="font-medium text-sm text-foreground">{report.label}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {available ? 'Ready to view' : isProcessing ? 'Generating...' : 'Run analysis first'}
-                    </p>
-                    {available && (
-                      <Link to={`/projects/${id}/reports/${report.path}`} className="block mt-3">
-                        <Button size="sm" variant="outline" className="w-full gap-1.5">
-                          View Report
+                    <div className="mb-4">
+                      <h3 className="font-bold text-base text-foreground">{report.label}</h3>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {AGENT_INFO[report.key]?.desc}
+                      </p>
+                    </div>
+                    <div className="mt-auto space-y-2">
+                      {available ? (
+                        <>
+                          <Link to={`/projects/${id}/reports/${report.path}`} className="block">
+                            <Button size="sm" className="w-full gap-1.5 shadow-sm">
+                              View Report
+                            </Button>
+                          </Link>
+                          <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs" onClick={() => handleRegenerate(report.path)} disabled={!!regeneratingReport}>
+                            <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+                          </Button>
+                        </>
+                      ) : isRepFailed ? (
+                        <Button size="sm" variant="destructive" className="w-full gap-1.5 shadow-sm" onClick={() => handleRegenerate(report.path)} disabled={!!regeneratingReport}>
+                          <RefreshCw className="w-3.5 h-3.5" /> Retry
                         </Button>
-                      </Link>
-                    )}
+                      ) : isRepRunning ? (
+                        <Button size="sm" variant="secondary" className="w-full gap-1.5 cursor-not-allowed" disabled>
+                          <Loader className="w-3.5 h-3.5 animate-spin" /> Please Wait
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="secondary" className="w-full gap-1.5" onClick={() => handleRegenerate(report.path)} disabled={!!regeneratingReport}>
+                          <Play className="w-3.5 h-3.5" /> Generate Report
+                        </Button>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               )
@@ -268,27 +415,32 @@ export default function ProjectDetailPage() {
               const status = log?.status || (isProcessing && project.current_agent === key ? 'running' : 'pending')
 
               return (
-                <Card key={key}>
-                  <CardContent className="p-4 flex items-center gap-4">
-                    <span className="text-2xl">{info.icon}</span>
+                <Card key={key} className={cn("transition-colors", isProcessing && project.current_agent === key && "border-primary/50 shadow-sm")}>
+                  <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center text-2xl shrink-0">
+                      {info.icon}
+                    </div>
                     <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium text-sm text-foreground">{info.label}</p>
-                        {log && (
-                          <span className="text-xs text-muted-foreground">
-                            {log.ai_provider && `· ${log.ai_provider}`}
-                            {log.tokens_used && ` · ${log.tokens_used} tokens`}
-                            {log.duration_ms && ` · ${(log.duration_ms / 1000).toFixed(1)}s`}
-                          </span>
-                        )}
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-bold text-sm text-foreground">{info.label}</h4>
+                        {status === 'running' && <span className="flex h-2 w-2 relative ml-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span></span>}
                       </div>
                       <p className="text-xs text-muted-foreground">{info.desc}</p>
                     </div>
-                    <div>
-                      {status === 'completed' && <CheckCircle className="w-5 h-5 text-green-500" />}
-                      {status === 'running' && <Loader className="w-5 h-5 text-blue-500 animate-spin" />}
-                      {status === 'failed' && <XCircle className="w-5 h-5 text-red-500" />}
-                      {status === 'pending' && <Clock className="w-5 h-5 text-muted-foreground" />}
+                    <div className="flex flex-col sm:items-end gap-1 min-w-[140px]">
+                      <div className="flex items-center gap-1.5">
+                        {status === 'completed' && <><CheckCircle className="w-4 h-4 text-emerald-500" /><span className="text-xs font-semibold text-emerald-500 uppercase">Completed</span></>}
+                        {status === 'running' && <><Loader className="w-4 h-4 text-primary animate-spin" /><span className="text-xs font-semibold text-primary uppercase">Generating</span></>}
+                        {status === 'failed' && <><XCircle className="w-4 h-4 text-destructive" /><span className="text-xs font-semibold text-destructive uppercase">Failed</span></>}
+                        {status === 'pending' && <><Clock className="w-4 h-4 text-muted-foreground" /><span className="text-xs font-semibold text-muted-foreground uppercase">Waiting</span></>}
+                      </div>
+                      {log && (
+                        <div className="text-[10px] text-muted-foreground/70 font-mono">
+                          {log.ai_provider && `${log.ai_provider} `}
+                          {log.tokens_used && `• ${log.tokens_used}tk `}
+                          {log.duration_ms && `• ${(log.duration_ms / 1000).toFixed(1)}s`}
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

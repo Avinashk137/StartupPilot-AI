@@ -10,7 +10,6 @@ const routeLabels: Record<string, string> = {
   '/projects': 'Projects',
   '/agents': 'AI Agents',
   '/reports': 'Reports',
-  '/analytics': 'Analytics',
   '/exports': 'Exports',
   '/notifications': 'Notifications',
   '/settings': 'Settings',
@@ -38,15 +37,10 @@ export function Navbar() {
     return 'Good evening'
   }
 
+
   return (
     <header className="h-16 border-b border-border bg-background/80 backdrop-blur-sm flex items-center gap-4 px-6 shrink-0 sticky top-0 z-30">
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-1.5 text-sm">
-        <span className="text-muted-foreground">StartupPilot</span>
-        <ChevronRight className="w-3 h-3 text-muted-foreground" />
-        <span className="font-semibold text-foreground">{currentLabel}</span>
-      </div>
-
+      {/* Removed old Breadcrumb implementation */}
       {/* Greeting */}
       <div className="hidden md:flex items-center gap-1 text-sm text-muted-foreground ml-4">
         <span>{greeting()},</span>

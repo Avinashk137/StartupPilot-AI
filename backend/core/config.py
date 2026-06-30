@@ -1,7 +1,8 @@
-from typing import Optional, List
+from typing import List
 from pydantic_settings import BaseSettings
-from pydantic import field_validator
+from pydantic import model_validator
 import os
+import sys
 
 
 class Settings(BaseSettings):
@@ -26,10 +27,25 @@ class Settings(BaseSettings):
 
     # AI Providers
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-pro-latest"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o-mini"
+
+    ANTHROPIC_API_KEY: str = ""
+    CLAUDE_MODEL: str = "claude-opus-4-5"
+
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+
+    TOGETHER_API_KEY: str = ""
+    TOGETHER_MODEL: str = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
 
     PRIMARY_AI_PROVIDER: str = "gemini"
-    AI_FALLBACK_ORDER: str = "gemini"
+    AI_FALLBACK_ORDER: str = "gemini,groq,openai,claude,together"
+
+    # Frontend
+    FRONTEND_URL: str = "http://localhost:5173"
 
     # CORS
     ALLOWED_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
@@ -37,6 +53,38 @@ class Settings(BaseSettings):
     # File Storage
     UPLOAD_DIR: str = "./uploads"
     MAX_UPLOAD_SIZE_MB: int = 10
+
+    @model_validator(mode="after")
+    def validate_required_env_vars(self) -> "Settings":
+        """Fail fast with a clear developer error if critical env vars are missing."""
+        missing = []
+
+        if not self.SUPABASE_URL:
+            missing.append("SUPABASE_URL")
+        if not self.SUPABASE_PUBLISHABLE_KEY:
+            missing.append("SUPABASE_PUBLISHABLE_KEY")
+        if not self.SUPABASE_SECRET_KEY:
+            missing.append("SUPABASE_SECRET_KEY")
+
+        if missing:
+            print(
+                "\n" + "=" * 60 + "\n"
+                "  STARTUP ERROR: Missing required environment variables\n"
+                "=" * 60 + "\n"
+                f"  Missing: {', '.join(missing)}\n\n"
+                "  Please ensure your backend/.env file contains:\n"
+                "    SUPABASE_URL=https://your-project.supabase.co\n"
+                "    SUPABASE_PUBLISHABLE_KEY=sb_publishable_...\n"
+                "    SUPABASE_SECRET_KEY=sb_secret_...\n"
+                "=" * 60 + "\n",
+                file=sys.stderr,
+            )
+            raise ValueError(
+                f"Missing required environment variables: {', '.join(missing)}. "
+                "Check your backend/.env file."
+            )
+
+        return self
 
     @property
     def allowed_origins_list(self) -> List[str]:

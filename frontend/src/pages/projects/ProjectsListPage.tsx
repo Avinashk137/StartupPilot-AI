@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { cn, formatDate, formatCurrency } from '@/lib/utils'
 import api from '@/lib/api'
+import { Breadcrumb } from '@/components/navigation/Breadcrumb'
 
 function StatusBadge({ status }: { status: string }) {
   const configs = {
@@ -80,6 +81,7 @@ export default function ProjectsListPage() {
 
   return (
     <div className="space-y-6 max-w-7xl">
+      <Breadcrumb currentPage="Projects" />
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}

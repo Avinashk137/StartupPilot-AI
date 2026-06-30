@@ -2,7 +2,7 @@ import time
 from typing import Optional
 import structlog
 from .base_provider import BaseAIProvider
-from .models import AIResponse
+from .models import AIResponse, ErrorType
 from ...core.config import settings
 
 logger = structlog.get_logger()
@@ -74,10 +74,22 @@ class OpenAIProvider(BaseAIProvider):
             )
         except Exception as e:
             latency = (time.time() - start) * 1000
-            logger.error("OpenAI generation failed", error=str(e))
+            err_str = str(e)
+            
+            error_type = ErrorType.UNKNOWN
+            if "429" in err_str or "rate limit" in err_str.lower() or "quota" in err_str.lower():
+                error_type = ErrorType.RATE_LIMIT
+            elif "401" in err_str or "403" in err_str or "invalid_api_key" in err_str:
+                error_type = ErrorType.UNAUTHORIZED
+            elif "timeout" in err_str.lower():
+                error_type = ErrorType.TIMEOUT
+            elif "500" in err_str or "503" in err_str:
+                error_type = ErrorType.SERVER_ERROR
+
+            logger.error("OpenAI generation failed", error=err_str)
             return AIResponse(
                 content="", model=self._model, provider=self.provider_name,
-                latency_ms=latency, success=False, error=str(e)
+                latency_ms=latency, success=False, error=err_str, error_type=error_type
             )
 
     async def is_available(self) -> bool:
@@ -147,10 +159,22 @@ class ClaudeProvider(BaseAIProvider):
             )
         except Exception as e:
             latency = (time.time() - start) * 1000
-            logger.error("Claude generation failed", error=str(e))
+            err_str = str(e)
+            
+            error_type = ErrorType.UNKNOWN
+            if "429" in err_str or "rate limit" in err_str.lower() or "quota" in err_str.lower():
+                error_type = ErrorType.RATE_LIMIT
+            elif "401" in err_str or "403" in err_str or "invalid_api_key" in err_str:
+                error_type = ErrorType.UNAUTHORIZED
+            elif "timeout" in err_str.lower():
+                error_type = ErrorType.TIMEOUT
+            elif "500" in err_str or "503" in err_str:
+                error_type = ErrorType.SERVER_ERROR
+
+            logger.error("Claude generation failed", error=err_str)
             return AIResponse(
                 content="", model=self._model, provider=self.provider_name,
-                latency_ms=latency, success=False, error=str(e)
+                latency_ms=latency, success=False, error=err_str, error_type=error_type
             )
 
     async def is_available(self) -> bool:
@@ -221,10 +245,22 @@ class GroqProvider(BaseAIProvider):
             )
         except Exception as e:
             latency = (time.time() - start) * 1000
-            logger.error("Groq generation failed", error=str(e))
+            err_str = str(e)
+            
+            error_type = ErrorType.UNKNOWN
+            if "429" in err_str or "rate limit" in err_str.lower() or "quota" in err_str.lower():
+                error_type = ErrorType.RATE_LIMIT
+            elif "401" in err_str or "403" in err_str or "invalid_api_key" in err_str:
+                error_type = ErrorType.UNAUTHORIZED
+            elif "timeout" in err_str.lower():
+                error_type = ErrorType.TIMEOUT
+            elif "500" in err_str or "503" in err_str:
+                error_type = ErrorType.SERVER_ERROR
+
+            logger.error("Groq generation failed", error=err_str)
             return AIResponse(
                 content="", model=self._model, provider=self.provider_name,
-                latency_ms=latency, success=False, error=str(e)
+                latency_ms=latency, success=False, error=err_str, error_type=error_type
             )
 
     async def is_available(self) -> bool:
@@ -295,10 +331,22 @@ class TogetherProvider(BaseAIProvider):
             )
         except Exception as e:
             latency = (time.time() - start) * 1000
-            logger.error("Together generation failed", error=str(e))
+            err_str = str(e)
+            
+            error_type = ErrorType.UNKNOWN
+            if "429" in err_str or "rate limit" in err_str.lower() or "quota" in err_str.lower():
+                error_type = ErrorType.RATE_LIMIT
+            elif "401" in err_str or "403" in err_str or "invalid_api_key" in err_str:
+                error_type = ErrorType.UNAUTHORIZED
+            elif "timeout" in err_str.lower():
+                error_type = ErrorType.TIMEOUT
+            elif "500" in err_str or "503" in err_str:
+                error_type = ErrorType.SERVER_ERROR
+
+            logger.error("Together generation failed", error=err_str)
             return AIResponse(
                 content="", model=self._model, provider=self.provider_name,
-                latency_ms=latency, success=False, error=str(e)
+                latency_ms=latency, success=False, error=err_str, error_type=error_type
             )
 
     async def is_available(self) -> bool:

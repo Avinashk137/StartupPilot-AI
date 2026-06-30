@@ -1,10 +1,10 @@
 import asyncio
+import sys
 from typing import Optional, List, Dict
 import structlog
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from .base_provider import BaseAIProvider
-from .models import AIResponse
+from .models import AIResponse, ErrorType
 from .gemini_provider import GeminiProvider
 from .providers import OpenAIProvider, ClaudeProvider, GroqProvider, TogetherProvider
 from ...core.config import settings
@@ -77,9 +77,9 @@ class AIService:
         prompt: str,
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
-        max_tokens: int = 8192,
+        max_tokens: int = 16384,
         preferred_provider: Optional[str] = None,
-        max_retries: int = 3,
+        max_retries: int = 2,
     ) -> AIResponse:
         """
         Generate AI response with automatic fallback.
@@ -101,6 +101,11 @@ class AIService:
 
         if not ordered_providers:
             raise AIServiceException("No AI providers configured. Please add at least one API key.")
+
+        diagnostics = {
+            "configured_providers": self.get_available_providers(),
+            "attempts": []
+        }
 
         last_error = None
         for provider_name in ordered_providers:
@@ -126,6 +131,15 @@ class AIService:
                         max_tokens=max_tokens,
                     )
 
+                    diagnostics["attempts"].append({
+                        "provider": provider_name,
+                        "attempt": attempt + 1,
+                        "success": response.success,
+                        "error": response.error,
+                        "error_type": response.error_type.value if getattr(response, 'error_type', None) else None,
+                        "latency_ms": response.latency_ms
+                    })
+
                     if response.success and response.content:
                         logger.info(
                             "AI generation successful",
@@ -133,6 +147,7 @@ class AIService:
                             tokens=response.tokens_used,
                             latency_ms=response.latency_ms,
                         )
+                        response.metadata["diagnostics"] = diagnostics
                         return response
 
                     last_error = response.error
@@ -141,9 +156,25 @@ class AIService:
                         error=last_error,
                         attempt=attempt + 1,
                     )
+                    
+                    error_type = getattr(response, 'error_type', None)
+                    if error_type == ErrorType.UNAUTHORIZED:
+                        logger.warning(f"Provider {provider_name} unauthorized. Failing over immediately.")
+                        break
+                    if error_type == ErrorType.RATE_LIMIT:
+                        logger.warning(f"Provider {provider_name} rate limited. Failing over immediately.")
+                        break
 
                 except Exception as e:
                     last_error = str(e)
+                    diagnostics["attempts"].append({
+                        "provider": provider_name,
+                        "attempt": attempt + 1,
+                        "success": False,
+                        "error": last_error,
+                        "error_type": "UNKNOWN",
+                        "latency_ms": 0
+                    })
                     logger.error(
                         f"Provider {provider_name} threw exception",
                         error=last_error,
@@ -164,14 +195,19 @@ class AIService:
         prompt: str,
         system_prompt: Optional[str] = None,
         temperature: float = 0.3,
-        max_tokens: int = 8192,
+        max_tokens: int = 16384,
         preferred_provider: Optional[str] = None,
     ) -> tuple[AIResponse, dict]:
-        """Generate and parse JSON response"""
+        """Generate and parse JSON response. Raises AIServiceException on parse failure."""
         import json
         import re
 
-        json_system = (system_prompt or "") + "\n\nIMPORTANT: Respond ONLY with valid JSON. No markdown, no explanations, no code blocks. Just the raw JSON object."
+        json_system = (
+            (system_prompt or "") +
+            "\n\nCRITICAL INSTRUCTION: You MUST respond with ONLY a valid JSON object. "
+            "Do NOT include markdown code fences (```), explanations, or any text outside the JSON. "
+            "Start your response with { and end with }. No trailing text."
+        )
 
         response = await self.generate(
             prompt=prompt,
@@ -183,24 +219,53 @@ class AIService:
 
         content = response.content.strip()
 
-        # Clean up common AI JSON formatting issues
+        # Strip markdown code fences if present
         if content.startswith("```"):
-            content = re.sub(r"```(?:json)?\n?", "", content).rstrip("`").strip()
+            content = re.sub(r"```(?:json)?\s*", "", content)
+            content = re.sub(r"```\s*$", "", content).strip()
+
+        # Strip any leading/trailing non-JSON text
+        # Find the outermost JSON object
+        brace_start = content.find("{")
+        if brace_start > 0:
+            content = content[brace_start:]
+        brace_end = content.rfind("}")
+        if brace_end != -1 and brace_end < len(content) - 1:
+            content = content[:brace_end + 1]
 
         try:
             parsed = json.loads(content)
             return response, parsed
-        except json.JSONDecodeError:
-            # Try to extract JSON from the response
-            json_match = re.search(r'\{[\s\S]*\}', content)
-            if json_match:
-                try:
-                    parsed = json.loads(json_match.group())
+        except json.JSONDecodeError as je:
+            try:
+                import json_repair
+                parsed = json_repair.repair_json(content, return_objects=True)
+                if parsed and isinstance(parsed, dict):
+                    logger.warning("JSON extracted and repaired via json_repair", provider=response.provider)
                     return response, parsed
-                except json.JSONDecodeError:
-                    pass
-            logger.error("Failed to parse JSON from AI response", content=content[:500])
-            return response, {}
+                else:
+                    raise ValueError("json_repair did not return a valid dictionary")
+            except Exception as repair_e:
+                # Last-ditch: regex extract largest JSON block
+                json_match = re.search(r'\{[\s\S]*\}', content)
+                if json_match:
+                    try:
+                        parsed = json_repair.repair_json(json_match.group(), return_objects=True) if 'json_repair' in sys.modules else json.loads(json_match.group())
+                        if parsed and isinstance(parsed, dict):
+                            logger.warning("JSON extracted via regex fallback and repaired", provider=response.provider)
+                            return response, parsed
+                    except Exception:
+                        pass
+                logger.error(
+                    "Failed to parse JSON from AI response",
+                    parse_error=str(je),
+                provider=response.provider,
+                content_preview=content[:300].encode('ascii', 'replace').decode('ascii'),
+            )
+            raise AIServiceException(
+                f"AI ({response.provider}) returned invalid JSON: {str(je)[:120]}. "
+                "The model did not follow the JSON format instruction."
+            )
 
 
 # Global singleton
