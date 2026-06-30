@@ -130,15 +130,7 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Bottom tagline */}
-          <div className="flex items-center gap-3 pt-4 border-t border-white/10">
-            <div className="flex -space-x-2">
-              {['S', 'A', 'R'].map((l, i) => (
-                <div key={i} className="w-7 h-7 rounded-full gradient-brand border-2 border-white/10 flex items-center justify-center text-white text-[10px] font-bold">{l}</div>
-              ))}
-            </div>
-            <p className="text-white/40 text-xs">Join founders already using StartupPilot AI</p>
-          </div>
+
         </div>
       </div>
 
