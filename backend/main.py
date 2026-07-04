@@ -15,6 +15,11 @@ from .api.auth import router as auth_router
 from .api.projects import router as projects_router
 from .api.reports import router as reports_router
 from .api.dashboard import router as dashboard_router
+from .api.settings import router as settings_router
+from .api.exports import router as exports_router
+from .agents.watchdog import start_watchdog, stop_watchdog
+from .core.supabase_client import supabase_admin
+from .api.exception_middleware import ExceptionLoggingMiddleware
 
 
 # Configure structured logging
@@ -43,6 +48,9 @@ def create_app() -> FastAPI:
         openapi_url="/api/openapi.json",
     )
 
+    # ── Middleware ────────────────────────────────────────
+    app.add_middleware(ExceptionLoggingMiddleware)
+
     # ── CORS ──────────────────────────────────────────────
     app.add_middleware(
         CORSMiddleware,
@@ -62,6 +70,8 @@ def create_app() -> FastAPI:
     app.include_router(projects_router, prefix="/api/v1")
     app.include_router(reports_router, prefix="/api/v1")
     app.include_router(dashboard_router, prefix="/api/v1")
+    app.include_router(settings_router, prefix="/api/v1")
+    app.include_router(exports_router, prefix="/api/v1/exports")
 
     # ── Health Check ──────────────────────────────────────
     @app.get("/api/health", tags=["Health"])
@@ -81,12 +91,21 @@ def create_app() -> FastAPI:
         # Create upload directory
         os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 
-
+        # Start the background watchdog (stall detector / auto-recovery)
+        try:
+            await start_watchdog(supabase_admin)
+            logger.info("[WATCHDOG] Background watchdog started")
+        except Exception as e:
+            logger.warning(f"[WATCHDOG] Failed to start watchdog: {e}")
 
 
     @app.on_event("shutdown")
     async def on_shutdown():
         logger.info("[STOP] StartupPilot AI shutting down...")
+        try:
+            await stop_watchdog()
+        except Exception:
+            pass
 
     return app
 

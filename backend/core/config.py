@@ -42,7 +42,8 @@ class Settings(BaseSettings):
     TOGETHER_MODEL: str = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
 
     PRIMARY_AI_PROVIDER: str = "gemini"
-    AI_FALLBACK_ORDER: str = "gemini,groq,openai,claude,together"
+    SECONDARY_AI_PROVIDER: str = "openai"
+    AI_FALLBACK_ORDER: str = "groq,claude,together"
 
     # Frontend
     FRONTEND_URL: str = "http://localhost:5173"
@@ -92,7 +93,16 @@ class Settings(BaseSettings):
 
     @property
     def ai_fallback_list(self) -> List[str]:
-        return [p.strip() for p in self.AI_FALLBACK_ORDER.split(",")]
+        fallbacks = []
+        if self.PRIMARY_AI_PROVIDER:
+            fallbacks.append(self.PRIMARY_AI_PROVIDER.strip())
+        if self.SECONDARY_AI_PROVIDER:
+            fallbacks.append(self.SECONDARY_AI_PROVIDER.strip())
+        for p in self.AI_FALLBACK_ORDER.split(","):
+            p = p.strip()
+            if p and p not in fallbacks:
+                fallbacks.append(p)
+        return fallbacks
 
     class Config:
         env_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")

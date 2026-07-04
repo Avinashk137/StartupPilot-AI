@@ -135,6 +135,10 @@ export default function ProjectDetailPage() {
     if (regeneratingReport) return
     
     setRegeneratingReport(reportPath)
+    
+    // Optimistically set to processing to immediately trigger the progress UI
+    setProject((p: any) => p ? { ...p, status: 'processing', current_agent: reportPath } : p)
+    
     try {
       await api.post(`/projects/${id}/reports/${reportPath}/regenerate`)
       clearInterval(pollingRef.current)
@@ -142,6 +146,7 @@ export default function ProjectDetailPage() {
     } catch (err: any) {
       console.error("Failed to regenerate report:", err)
       setRegeneratingReport(null)
+      loadProject() // Reload to restore state if it immediately fails
     }
   }
 
@@ -193,7 +198,7 @@ export default function ProjectDetailPage() {
                 {project.budget && (
                   <>
                     <span>·</span>
-                    <span className="flex items-center gap-1"><DollarSign className="w-3.5 h-3.5" />{formatCurrency(project.budget, project.budget_currency)}</span>
+                    <span>{formatCurrency(project.budget, project.budget_currency)}</span>
                   </>
                 )}
               </div>
@@ -222,50 +227,72 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        {/* Progress */}
+        {/* Progress / Live Status Cards */}
         {isProcessing && (
-          <Card className="border-primary/20 bg-primary/5">
-            <CardContent className="py-5 px-6">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Loader className="w-4 h-4 animate-spin text-primary" />
-                  </div>
-                  <div>
-                    <span className="text-sm font-bold text-foreground">
-                      {project.current_agent
-                        ? `Running: ${AGENT_INFO[project.current_agent]?.label || project.current_agent}`
-                        : 'Starting analysis...'}
-                    </span>
-                    <p className="text-xs text-muted-foreground">5 AI agents working sequentially. This takes 2-3 minutes.</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <span className="text-2xl font-black text-primary">{project.progress_percent}%</span>
-                </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-foreground">AI Analysis in Progress</h3>
+                <p className="text-sm text-muted-foreground">Agents are working in a hybrid pipeline.</p>
               </div>
-              <Progress value={project.progress_percent} className="h-2.5 bg-primary/10" />
-              
-              <div className="flex justify-between items-center mt-4 pt-4 border-t border-primary/10">
-                {Object.keys(AGENT_INFO).map((key, i) => {
-                  const log = agentLogs.find(l => l.agent_name === key)
-                  const isCurrent = project.current_agent === key
-                  const isDone = log?.status === 'completed'
-                  const isFailed = log?.status === 'failed'
-                  let icon = <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center text-[10px] text-muted-foreground">{i + 1}</div>
-                  if (isDone) icon = <CheckCircle className="w-5 h-5 text-emerald-500" />
-                  if (isFailed) icon = <XCircle className="w-5 h-5 text-destructive" />
-                  if (isCurrent) icon = <Loader className="w-5 h-5 text-primary animate-spin" />
-                  return (
-                    <div key={key} className={cn("flex flex-col items-center gap-1.5 opacity-50 transition-opacity", (isCurrent || isDone) && "opacity-100")}>
-                      {icon}
-                      <span className="text-[10px] font-medium uppercase tracking-wider">{key.split('_')[0]}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </Card>
+              <span className="text-2xl font-black text-primary">{project.progress_percent}%</span>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {Object.keys(AGENT_INFO).map((key) => {
+                const info = AGENT_INFO[key]
+                const report = reports?.[key]
+                const log = agentLogs.find(l => l.agent_name === key)
+                const isCurrent = project.current_agent === key || report?.status === 'running'
+                const isDone = report?.status === 'completed' || log?.status === 'completed'
+                const isFailed = report?.status === 'failed' || log?.status === 'failed'
+                
+                let statusText = 'Queued'
+                let StatusIcon = Clock
+                let statusColor = 'text-muted-foreground'
+                let bgColor = 'bg-card'
+                let borderColor = 'border-border'
+
+                if (isFailed) {
+                  statusText = 'Failed'
+                  StatusIcon = XCircle
+                  statusColor = 'text-destructive'
+                  bgColor = 'bg-destructive/5'
+                  borderColor = 'border-destructive/20'
+                } else if (isDone) {
+                  statusText = 'Completed'
+                  StatusIcon = CheckCircle
+                  statusColor = 'text-emerald-500'
+                  bgColor = 'bg-emerald-500/5'
+                  borderColor = 'border-emerald-500/20'
+                } else if (isCurrent) {
+                  statusText = 'Running'
+                  StatusIcon = Loader
+                  statusColor = 'text-primary'
+                  bgColor = 'bg-primary/5'
+                  borderColor = 'border-primary/20'
+                }
+
+                return (
+                  <Card key={key} className={cn("transition-colors shadow-sm", bgColor, borderColor)}>
+                    <CardContent className="p-4 flex items-start gap-3">
+                      <div className="text-2xl mt-0.5">{info.icon}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <h4 className="font-semibold text-sm truncate pr-2">{info.label}</h4>
+                          <StatusIcon className={cn("w-4 h-4 shrink-0", isCurrent && "animate-spin", statusColor)} />
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">{info.desc}</p>
+                        <div className={cn("text-xs font-medium mt-2", statusColor)}>
+                          {statusText}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          </div>
         )}
 
         {/* Show partial completion warning */}
@@ -362,6 +389,8 @@ export default function ProjectDetailPage() {
               const repStatus = reportData?.status || 'pending'
               const isRepRunning = repStatus === 'running' || regeneratingReport === report.path || (isProcessing && project.current_agent === report.key)
               const isRepFailed = repStatus === 'failed'
+              const progressStep = reportData?.data?.raw_data?.progress_step
+              const progressPct = reportData?.data?.raw_data?.progress_percent
 
               return (
                 <Card key={report.key} className={cn('transition-all hover:shadow-md border-border', (!available && !isRepFailed && !isRepRunning) && 'opacity-70')}>
@@ -402,13 +431,13 @@ export default function ProjectDetailPage() {
                             <RefreshCw className="w-3.5 h-3.5" /> Regenerate
                           </Button>
                         </>
-                      ) : isRepFailed ? (
+                      ) : isRepFailed && !isRepRunning ? (
                         <Button size="sm" variant="destructive" className="w-full gap-1.5 shadow-sm" onClick={() => handleRegenerate(report.path)} disabled={!!regeneratingReport}>
                           <RefreshCw className="w-3.5 h-3.5" /> Retry
                         </Button>
                       ) : isRepRunning ? (
                         <Button size="sm" variant="secondary" className="w-full gap-1.5 cursor-not-allowed" disabled>
-                          <Loader className="w-3.5 h-3.5 animate-spin" /> Please Wait
+                          <Loader className="w-3.5 h-3.5 animate-spin" /> {progressStep ? `${progressStep} (${progressPct}%)` : (regeneratingReport === report.path ? 'Retrying...' : 'Please Wait')}
                         </Button>
                       ) : (
                         <Button size="sm" variant="secondary" className="w-full gap-1.5" onClick={() => handleRegenerate(report.path)} disabled={!!regeneratingReport}>

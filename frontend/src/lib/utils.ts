@@ -5,26 +5,31 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatCurrency(amount: number, currency: string = "USD"): string {
-  if (currency === "INR") {
+export function formatCurrency(amount: number, _currency?: string): string {
+  try {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
       currency: "INR",
       maximumFractionDigits: 0,
     }).format(amount)
+  } catch {
+    return `₹ ${new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(amount)}`
   }
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: 0,
-  }).format(amount)
+}
+
+export const CURRENCY_SYMBOLS: Record<string, string> = {
+  INR: "₹",
+}
+
+export function getCurrencySymbol(currencyCode: string): string {
+  return "₹"
 }
 
 export function formatNumber(num: number): string {
-  if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(1)}B`
-  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`
+  if (num >= 10_000_000) return `${(num / 10_000_000).toFixed(1)} Cr`
+  if (num >= 1_00_000) return `${(num / 1_00_000).toFixed(1)} Lakh`
   if (num >= 1_000) return `${(num / 1_000).toFixed(1)}K`
-  return num.toString()
+  return num.toLocaleString("en-IN")
 }
 
 export function formatDate(date: string | Date): string {

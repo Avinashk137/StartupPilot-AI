@@ -16,14 +16,21 @@ import KpiCard from '@/components/reports/KpiCard'
 
 const PALETTE = ['#6366f1', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444']
 
-export default function CompetitorReportPage() {
-  const { id } = useParams<{ id: string }>()
+export default function CompetitorReportPage({ projectId, hideNavigation, overrideData, overrideProject, overrideReportMetadata }: { projectId?: string, hideNavigation?: boolean, overrideData?: any, overrideProject?: any, overrideReportMetadata?: any } = {}) {
+  const params = useParams<{ id: string }>()
+  const id = projectId || params.id
   const [report, setReport] = useState<any>(null)
   const [project, setProject] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const loadData = async () => {
+    if (overrideData) {
+      setReport({ raw_data: overrideData, ...overrideReportMetadata })
+      setProject(overrideProject || { business_name: 'Historical Version' })
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
@@ -40,7 +47,7 @@ export default function CompetitorReportPage() {
     }
   }
 
-  useEffect(() => { loadData() }, [id])
+  useEffect(() => { loadData() }, [id, overrideData])
 
   const raw = (typeof report?.raw_data === 'object' && report?.raw_data !== null) ? report.raw_data : {}
   const competitors = Array.isArray(raw.competitors) ? raw.competitors : []
@@ -107,12 +114,15 @@ export default function CompetitorReportPage() {
       projectId={id!}
       reportType="competitor"
       title="Competitor Analysis"
-      subtitle={project ? `${project.business_name} · ${competitors.length} competitors identified` : ''}
-      accentColor="from-rose-600 to-orange-600"
+      subtitle={`Project: ${project?.business_name || 'Unknown'} · Industry: ${project?.industry || 'N/A'}`}
+      projectData={project}
+      reportMetadata={report}
+      accentColor="from-violet-600 to-purple-600"
       rawData={raw}
       loading={loading}
       error={error}
       onReload={loadData}
+      hideNavigation={hideNavigation}
     >
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

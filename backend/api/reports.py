@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
+from fastapi.responses import JSONResponse
 from typing import Optional
 
 from ..core.dependencies import get_current_user
 from ..core.exceptions import NotFoundException, ForbiddenException
 from ..core.supabase_client import supabase_admin
 
-router = APIRouter(prefix="/projects", tags=["Reports"])
+router = APIRouter(tags=["Reports"])
 
 REPORT_TABLES = {
     "research": "research_reports",
@@ -15,7 +16,7 @@ REPORT_TABLES = {
     "marketing": "marketing_reports",
 }
 
-@router.get("/{project_id}/reports")
+@router.get("/projects/{project_id}/reports")
 async def get_all_reports(
     project_id: str,
     current_user = Depends(get_current_user),
@@ -50,7 +51,7 @@ async def get_all_reports(
 
     return {"success": True, "data": reports}
 
-@router.get("/{project_id}/reports/{report_type}")
+@router.get("/projects/{project_id}/reports/{report_type}")
 async def get_specific_report(
     project_id: str, 
     report_type: str,
@@ -73,7 +74,7 @@ async def get_specific_report(
         
     return await _get_report(project_id, REPORT_TABLES[mapped_type], current_user)
 
-@router.get("/{project_id}/agent-logs")
+@router.get("/projects/{project_id}/agent-logs")
 async def get_agent_logs(project_id: str, current_user = Depends(get_current_user)):
     try:
         res = supabase_admin.table("projects").select("user_id").eq("id", project_id).execute()
@@ -130,9 +131,14 @@ async def _get_report(project_id: str, table_name: str, current_user):
     if status == "completed":
         return {"success": True, "data": report}
     elif status == "running":
+        progress_info = report.get("raw_data", {}) or {}
         raise HTTPException(
             status_code=202,
-            detail=f"Report is currently being generated. Please wait and refresh."
+            detail={
+                "message": "Report is currently being generated. Please wait and refresh.",
+                "progress_step": progress_info.get("progress_step", "Running"),
+                "progress_percent": progress_info.get("progress_percent", 0)
+            }
         )
     elif status == "failed":
         error_detail = report.get("raw_data", {}) or {}
@@ -149,15 +155,98 @@ async def _get_report(project_id: str, table_name: str, current_user):
         )
 
 
-@router.post("/{project_id}/reports/{report_type}/regenerate")
+@router.get("/projects/{project_id}/reports/{report_type}/markdown")
+async def get_report_markdown(
+    project_id: str, 
+    report_type: str,
+    current_user = Depends(get_current_user)
+):
+    """
+    Returns the report data formatted strictly as a Markdown string.
+    """
+    # Fetch report using the existing _get_report helper
+    # We must map the type correctly first
+    type_mapping = {
+        "research": "research",
+        "competitor": "competitor",
+        "business-plan": "business_plan",
+        "business_plan": "business_plan",
+        "finance": "finance",
+        "financial": "finance",
+        "marketing": "marketing",
+    }
+    
+    mapped_type = type_mapping.get(report_type)
+    if not mapped_type or mapped_type not in REPORT_TABLES:
+        raise NotFoundException("Report Type", report_type)
+        
+    result = await _get_report(project_id, REPORT_TABLES[mapped_type], current_user)
+    report_data = result["data"]
+    raw_json = report_data.get("raw_data", {})
+    
+    # Simple JSON to Markdown formatter
+    lines = []
+    
+    def walk(obj, depth=0):
+        if isinstance(obj, list):
+            for item in obj:
+                if isinstance(item, (dict, list)):
+                    lines.append("")
+                    walk(item, depth + 1)
+                else:
+                    indent = "  " * depth
+                    lines.append(f"{indent}- {item}")
+        elif isinstance(obj, dict):
+            for key, val in obj.items():
+                label = str(key).replace("_", " ").title()
+                if isinstance(val, (dict, list)):
+                    header_level = min(depth + 2, 6)
+                    lines.append(f"{'#' * header_level} {label}")
+                    walk(val, depth + 1)
+                else:
+                    lines.append(f"**{label}:** {val}")
+        elif obj is not None:
+            lines.append(str(obj))
+            
+    walk(raw_json)
+    markdown_content = "\n".join(lines)
+    
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse(content=markdown_content)
+
+
+@router.post("/projects/{project_id}/reports/{report_type}/regenerate")
 async def regenerate_report(
     project_id: str,
     report_type: str,
+    request: Request,
     background_tasks: BackgroundTasks,
     current_user = Depends(get_current_user),
 ):
     """Regenerate a single report section on-demand without touching others."""
     from fastapi import BackgroundTasks as BT
+    import structlog
+    
+    req_logger = structlog.get_logger()
+    req_logger.info("Request received: Regenerate Report", project_id=project_id, report_type=report_type, user_id=str(current_user.id))
+
+    # --- Manual Payload Parsing ---
+    body_json = {}
+    try:
+        body_bytes = await request.body()
+        if body_bytes:
+            body_json = await request.json()
+    except Exception as e:
+        req_logger.warning("Failed to parse request JSON body on regenerate", error=str(e), project_id=project_id)
+        # We don't fail strictly here, just in case, but we log it.
+        # If we wanted to fail, we would return 400 with our own details.
+        
+    req_logger.info(
+        "Before validation (Regenerate)",
+        project_id=project_id,
+        authenticated_user=str(current_user.id),
+        incoming_request_body=body_json
+    )
 
     type_mapping = {
         "research": "research",
@@ -209,4 +298,47 @@ async def _run_single_regeneration(project: dict, section_key: str):
         bg_logger.info("Single regeneration complete", project_id=project_id, section=section_key)
     except Exception as e:
         bg_logger.error("Single regeneration failed", project_id=project_id, section=section_key, error=str(e))
+
+@router.get("/reports/dashboard")
+async def get_reports_dashboard(current_user = Depends(get_current_user)):
+    """Fetch all projects and their reports in a single unified query."""
+    try:
+        try:
+            # Try fetching with versioning columns
+            query = (
+                supabase_admin.table("projects")
+                .select(
+                    "id, business_name, industry, country, state, budget, status, created_at, "
+                    "research_reports(status, raw_data, updated_at, version, previous_versions, provider_used), "
+                    "competitor_reports(status, raw_data, updated_at, version, previous_versions, provider_used), "
+                    "business_plans(status, raw_data, updated_at, version, previous_versions, provider_used), "
+                    "financial_reports(status, raw_data, updated_at, version, previous_versions, provider_used), "
+                    "marketing_reports(status, raw_data, updated_at, version, previous_versions, provider_used)"
+                )
+                .eq("user_id", current_user.id)
+                .order("created_at", desc=True)
+            )
+            res = query.execute()
+            return {"success": True, "data": res.data}
+        except Exception as query_err:
+            # Fallback if versioning migration hasn't been run
+            query = (
+                supabase_admin.table("projects")
+                .select(
+                    "id, business_name, industry, country, state, budget, status, created_at, "
+                    "research_reports(status, raw_data, updated_at), "
+                    "competitor_reports(status, raw_data, updated_at), "
+                    "business_plans(status, raw_data, updated_at), "
+                    "financial_reports(status, raw_data, updated_at), "
+                    "marketing_reports(status, raw_data, updated_at)"
+                )
+                .eq("user_id", current_user.id)
+                .order("created_at", desc=True)
+            )
+            res = query.execute()
+            return {"success": True, "data": res.data}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to fetch reports dashboard: {e}")
 

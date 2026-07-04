@@ -1,8 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from '@/providers/auth-provider'
+import { ThemeProvider } from '@/providers/theme-provider'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
+import { Toaster } from 'sonner'
 
 // Auth Pages
 import LoginPage from '@/pages/auth/LoginPage'
@@ -45,10 +47,15 @@ const queryClient = new QueryClient({
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <BrowserRouter>
-          <Routes>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <BrowserRouter>
+            <Toaster position="top-right" />
+            <Routes>
+              {/* Initial Route */}
+            <Route path="/" element={<Navigate to="/login" replace />} />
+
             {/* Auth Routes */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
@@ -57,44 +64,43 @@ function App() {
 
             {/* Protected Dashboard Routes */}
             <Route
-              path="/"
               element={
                 <ProtectedRoute>
                   <DashboardLayout />
                 </ProtectedRoute>
               }
             >
-              <Route index element={<Navigate to="/dashboard" replace />} />
-              <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
 
               {/* Projects */}
-              <Route path="projects" element={<ProjectsListPage />} />
-              <Route path="projects/new" element={<CreateProjectPage />} />
-              <Route path="projects/:id" element={<ProjectDetailPage />} />
+              <Route path="/projects" element={<ProjectsListPage />} />
+              <Route path="/projects/new" element={<CreateProjectPage />} />
+              <Route path="/projects/:id" element={<ProjectDetailPage />} />
 
               {/* Project Reports */}
-              <Route path="projects/:id/reports" element={<RedirectToReports />} />
-              <Route path="projects/:id/reports/research" element={<ResearchReportPage />} />
-              <Route path="projects/:id/reports/competitor" element={<CompetitorReportPage />} />
-              <Route path="projects/:id/reports/business-plan" element={<BusinessPlanReportPage />} />
-              <Route path="projects/:id/reports/financial" element={<FinancialReportPage />} />
-              <Route path="projects/:id/reports/marketing" element={<MarketingReportPage />} />
+              <Route path="/projects/:id/reports" element={<RedirectToReports />} />
+              <Route path="/projects/:id/reports/research" element={<ResearchReportPage />} />
+              <Route path="/projects/:id/reports/competitor" element={<CompetitorReportPage />} />
+              <Route path="/projects/:id/reports/business-plan" element={<BusinessPlanReportPage />} />
+              <Route path="/projects/:id/reports/financial" element={<FinancialReportPage />} />
+              <Route path="/projects/:id/reports/marketing" element={<MarketingReportPage />} />
 
               {/* Other */}
-              <Route path="agents" element={<AgentsPage />} />
-              <Route path="reports" element={<ReportsPage />} />
-              <Route path="exports" element={<ExportsPage />} />
-              <Route path="notifications" element={<NotificationsPage />} />
-              <Route path="settings" element={<SettingsPage />} />
-              <Route path="profile" element={<ProfilePage />} />
+              <Route path="/agents" element={<AgentsPage />} />
+              <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/exports" element={<ExportsPage />} />
+              <Route path="/notifications" element={<NotificationsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
             </Route>
 
             {/* Catch-all */}
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </BrowserRouter>
-      </AuthProvider>
-    </QueryClientProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   )
 }
 

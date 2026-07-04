@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   TrendingUp, AlertTriangle, Target, Lightbulb, Users,
-  BarChart3, Globe, Zap, ShieldAlert, CheckCircle2, ArrowRight
+  BarChart3, Globe, Zap, ShieldAlert, CheckCircle2, ArrowRight, DollarSign
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -31,14 +31,22 @@ function SeverityBadge({ level }: { level: string }) {
   )
 }
 
-export default function ResearchReportPage() {
-  const { id } = useParams<{ id: string }>()
+export default function ResearchReportPage({ projectId, hideNavigation, overrideData, overrideProject, overrideReportMetadata }: { projectId?: string, hideNavigation?: boolean, overrideData?: any, overrideProject?: any, overrideReportMetadata?: any } = {}) {
+  const params = useParams<{ id: string }>()
+  const id = projectId || params.id
   const [report, setReport] = useState<any>(null)
   const [project, setProject] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const loadData = async () => {
+    if (overrideData) {
+      setReport({ raw_data: overrideData, ...overrideReportMetadata })
+      setProject(overrideProject || { business_name: 'Historical Version' })
+      setLoading(false)
+      return
+    }
+    
     setLoading(true)
     setError(null)
     try {
@@ -55,7 +63,7 @@ export default function ResearchReportPage() {
     }
   }
 
-  useEffect(() => { loadData() }, [id])
+  useEffect(() => { loadData() }, [id, overrideData])
 
   const raw = report?.raw_data || {}
   const segments = raw.customer_segments || []
@@ -78,19 +86,35 @@ export default function ResearchReportPage() {
       projectId={id!}
       reportType="research"
       title="Market Research Report"
-      subtitle={project ? `${project.business_name} · ${project.industry} · ${project.country}` : ''}
-      accentColor="from-violet-600 to-indigo-600"
+      subtitle={`Project: ${project?.business_name || 'Unknown'} · Industry: ${project?.industry || 'N/A'}`}
+      projectData={project}
+      reportMetadata={report}
+      accentColor="from-blue-600 to-cyan-600"
       rawData={raw}
       loading={loading}
       error={error}
       onReload={loadData}
+      hideNavigation={hideNavigation}
     >
       {/* KPI Cards */}
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KpiCard label="Total Market Size" value={raw.market_size || '—'} icon={Globe} iconColor="text-violet-500" />
-        <KpiCard label="TAM" value={raw.tam || '—'} icon={Target} iconColor="text-indigo-500" highlight />
-        <KpiCard label="SAM" value={raw.sam || '—'} icon={BarChart3} iconColor="text-cyan-500" />
-        <KpiCard label="Annual Growth Rate" value={raw.growth_rate || '—'} icon={TrendingUp} iconColor="text-emerald-500" trend="up" />
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className={cn("grid gap-4", (raw.potential_customers || raw.business_demand) ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-3" : "grid-cols-2 md:grid-cols-4")}>
+        {(raw.potential_customers || raw.business_demand) ? (
+          <>
+            <KpiCard label="Potential Customers" value={raw.potential_customers || '—'} icon={Users} iconColor="text-violet-500" />
+            <KpiCard label="Monthly Revenue Opportunity" value={raw.monthly_revenue_opportunity || '—'} icon={DollarSign} iconColor="text-emerald-500" highlight />
+            <KpiCard label="Business Demand" value={raw.business_demand?.score ? `${raw.business_demand.score}%` : '—'} icon={TrendingUp} iconColor="text-indigo-500" badge={raw.business_demand?.level && <SeverityBadge level={raw.business_demand.level} />} />
+            <KpiCard label="Target Customers" value={Array.isArray(raw.target_customers) ? raw.target_customers.join(', ') : '—'} icon={Target} iconColor="text-cyan-500" />
+            <KpiCard label="Competition" value={raw.competition_level?.competitor_count ? `~${raw.competition_level.competitor_count} competitors` : '—'} icon={ShieldAlert} iconColor="text-amber-500" badge={raw.competition_level?.level && <SeverityBadge level={raw.competition_level.level} />} />
+            <KpiCard label="Success Potential" value={raw.success_potential?.score ? `${raw.success_potential.score}/100` : '—'} sub={raw.success_potential?.explanation} icon={Zap} iconColor="text-yellow-500" />
+          </>
+        ) : (
+          <>
+            <KpiCard label="Total Market Size" value={raw.market_size || '—'} icon={Globe} iconColor="text-violet-500" />
+            <KpiCard label="TAM" value={raw.tam || '—'} icon={Target} iconColor="text-indigo-500" highlight />
+            <KpiCard label="SAM" value={raw.sam || '—'} icon={BarChart3} iconColor="text-cyan-500" />
+            <KpiCard label="Annual Growth Rate" value={raw.growth_rate || '—'} icon={TrendingUp} iconColor="text-emerald-500" trend="up" />
+          </>
+        )}
       </motion.div>
 
       {/* Executive Summary — Key Insights Banner */}

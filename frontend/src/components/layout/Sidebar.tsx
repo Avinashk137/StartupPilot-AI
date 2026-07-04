@@ -51,7 +51,7 @@ export function Sidebar({ collapsed, onCollapse }: SidebarProps) {
     <motion.aside
       animate={{ width: collapsed ? 72 : 260 }}
       transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-      className="relative flex flex-col h-screen bg-sidebar border-r border-sidebar-border overflow-hidden shrink-0"
+      className="relative flex flex-col h-screen bg-sidebar border-r border-sidebar-border overflow-hidden shrink-0 print:hidden"
     >
       {/* ── Logo ────────────────────────────────────────────── */}
       <div className="flex items-center h-16 px-4 border-b border-sidebar-border gap-3 shrink-0">

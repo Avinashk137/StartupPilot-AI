@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Plus, Search, Filter, CheckCircle, Clock, Loader, XCircle,
@@ -36,7 +36,9 @@ export default function ProjectsListPage() {
   const [projects, setProjects] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialStatus = searchParams.get('status') || 'all'
+  const [statusFilter, setStatusFilter] = useState(initialStatus)
   const [total, setTotal] = useState(0)
 
   const loadProjects = async () => {
@@ -60,9 +62,9 @@ export default function ProjectsListPage() {
     p.industry.toLowerCase().includes(search.toLowerCase())
   )
 
-  const handleRun = async (projectId: number) => {
+  const handleRun = async (projectId: number, options = {}) => {
     try {
-      await api.post(`/projects/${projectId}/run`)
+      await api.post(`/projects/${projectId}/run`, options)
       setTimeout(loadProjects, 1000)
     } catch (err) {
       console.error(err)
@@ -92,17 +94,11 @@ export default function ProjectsListPage() {
           <h1 className="text-2xl font-bold text-foreground">Projects</h1>
           <p className="text-muted-foreground text-sm mt-1">{total} total projects</p>
         </div>
-        <Link to="/projects/new">
-          <Button className="gap-2">
-            <Plus className="w-4 h-4" />
-            New Project
-          </Button>
-        </Link>
       </motion.div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
+      {/* Search & Actions */}
+      <div className="flex flex-col sm:flex-row gap-3 justify-between items-start sm:items-center">
+        <div className="relative w-full sm:max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Search projects..."
@@ -111,22 +107,33 @@ export default function ProjectsListPage() {
             className="pl-9"
           />
         </div>
-        <div className="flex gap-2">
-          {['all', 'draft', 'processing', 'completed', 'partial', 'failed'].map((status) => (
-            <button
-              key={status}
-              onClick={() => setStatusFilter(status)}
-              className={cn(
-                'px-3 py-2 rounded-lg text-xs font-medium capitalize transition-all',
-                statusFilter === status
-                  ? 'gradient-brand text-white shadow-sm'
-                  : 'bg-secondary text-muted-foreground hover:text-foreground'
-              )}
-            >
-              {status}
-            </button>
-          ))}
-        </div>
+        <Link to="/projects/new" className="w-full sm:w-auto">
+          <Button className="w-full sm:w-auto gap-2">
+            <Plus className="w-4 h-4" />
+            New Project
+          </Button>
+        </Link>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2">
+        {['all', 'draft', 'processing', 'completed', 'partial', 'failed'].map((status) => (
+          <button
+            key={status}
+            onClick={() => {
+              setStatusFilter(status)
+              setSearchParams(status === 'all' ? {} : { status })
+            }}
+            className={cn(
+              'px-3 py-2 rounded-lg text-xs font-medium capitalize transition-all',
+              statusFilter === status
+                ? 'gradient-brand text-white shadow-sm'
+                : 'bg-secondary text-muted-foreground hover:text-foreground'
+            )}
+          >
+            {status}
+          </button>
+        ))}
       </div>
 
       {/* Projects Grid */}
@@ -196,7 +203,6 @@ export default function ProjectsListPage() {
                     </div>
                     {project.budget && (
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <DollarSign className="w-3.5 h-3.5 shrink-0" />
                         <span>{formatCurrency(project.budget, project.budget_currency)}</span>
                       </div>
                     )}
@@ -217,6 +223,29 @@ export default function ProjectsListPage() {
                     </div>
                   )}
 
+                  {/* Partial Status Indicators */}
+                  {project.status === 'partial' && (
+                    <div className="space-y-2 mt-1">
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Overall Completion</span>
+                        <span>{project.progress_percent || 0}%</span>
+                      </div>
+                      <Progress value={project.progress_percent || 0} className="h-1.5" />
+                      <div className="flex flex-wrap gap-1 text-[10px]">
+                        {['research', 'competitor', 'business_plan', 'finance', 'marketing'].map(report => {
+                          const status = project.ai_diagnostics?.[report]?.status;
+                          if (status === 'success') {
+                            return <span key={report} className="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded capitalize">{report.replace('_', ' ')}</span>
+                          } else if (status === 'error' || status === 'failed') {
+                            return <span key={report} className="text-red-600 bg-red-50 px-1.5 py-0.5 rounded capitalize">{report.replace('_', ' ')} (Failed)</span>
+                          } else {
+                            return <span key={report} className="text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded capitalize">{report.replace('_', ' ')} (Missing)</span>
+                          }
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Actions */}
                   <div className="flex gap-2 mt-auto pt-2 border-t border-border">
                     <Link to={`/projects/${project.id}`} className="flex-1">
@@ -232,6 +261,25 @@ export default function ProjectsListPage() {
                       >
                         <Play className="w-3.5 h-3.5" /> Run AI
                       </Button>
+                    )}
+                    {project.status === 'partial' && (
+                      <div className="flex gap-1.5 flex-1">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="flex-1 text-xs px-2" 
+                          onClick={() => handleRun(project.id, { resume_mode: true })}
+                        >
+                          <Play className="w-3 h-3 mr-1" /> Resume
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          className="flex-1 text-xs px-2" 
+                          onClick={() => handleRun(project.id, { retry_mode: true })}
+                        >
+                          <Play className="w-3 h-3 mr-1" /> Retry
+                        </Button>
+                      </div>
                     )}
                     {project.status === 'completed' && (
                       <Link to={`/projects/${project.id}?tab=reports`} className="flex-1">

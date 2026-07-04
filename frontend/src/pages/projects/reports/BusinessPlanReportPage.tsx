@@ -15,14 +15,21 @@ import KpiCard from '@/components/reports/KpiCard'
 
 const PALETTE = ['#6366f1', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444']
 
-export default function BusinessPlanReportPage() {
-  const { id } = useParams<{ id: string }>()
+export default function BusinessPlanReportPage({ projectId, hideNavigation, overrideData, overrideProject, overrideReportMetadata }: { projectId?: string, hideNavigation?: boolean, overrideData?: any, overrideProject?: any, overrideReportMetadata?: any } = {}) {
+  const params = useParams<{ id: string }>()
+  const id = projectId || params.id
   const [report, setReport] = useState<any>(null)
   const [project, setProject] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const loadData = async () => {
+    if (overrideData) {
+      setReport({ raw_data: overrideData, ...overrideReportMetadata })
+      setProject(overrideProject || { business_name: 'Historical Version' })
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
@@ -39,7 +46,7 @@ export default function BusinessPlanReportPage() {
     }
   }
 
-  useEffect(() => { loadData() }, [id])
+  useEffect(() => { loadData() }, [id, overrideData])
 
   const raw = report?.raw_data || {}
   const phases = [raw.growth_strategy?.phase1, raw.growth_strategy?.phase2, raw.growth_strategy?.phase3].filter(Boolean)
@@ -50,15 +57,15 @@ export default function BusinessPlanReportPage() {
   const ops = raw.operations_plan || {}
 
   const bmcSections = [
-    { label: 'Value Proposition', value: raw.value_proposition, icon: '💎', color: 'bg-violet-50 dark:bg-violet-950/20 border-violet-200' },
-    { label: 'Customer Segments', value: raw.target_market, icon: '👥', color: 'bg-blue-50 dark:bg-blue-950/20 border-blue-200' },
-    { label: 'Revenue Streams', value: revenueModel.map((r: any) => r.stream).join(', '), icon: '💰', color: 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200' },
-    { label: 'Key Activities', value: (ops.processes || []).slice(0, 3).join(', '), icon: '⚙️', color: 'bg-amber-50 dark:bg-amber-950/20 border-amber-200' },
-    { label: 'Key Resources', value: (ops.technology || []).slice(0, 3).join(', '), icon: '🔧', color: 'bg-cyan-50 dark:bg-cyan-950/20 border-cyan-200' },
-    { label: 'Channels', value: raw.go_to_market?.channels?.join(', '), icon: '📢', color: 'bg-pink-50 dark:bg-pink-950/20 border-pink-200' },
-    { label: 'Cost Structure', value: raw.pricing_strategy?.model, icon: '📊', color: 'bg-orange-50 dark:bg-orange-950/20 border-orange-200' },
-    { label: 'Mission', value: raw.mission, icon: '🎯', color: 'bg-indigo-50 dark:bg-indigo-950/20 border-indigo-200' },
-    { label: 'Vision', value: raw.vision, icon: '🚀', color: 'bg-purple-50 dark:bg-purple-950/20 border-purple-200' },
+    { label: 'Value Proposition', value: raw.value_proposition, icon: '💎', color: 'bg-violet-50 dark:bg-violet-950/30 border-violet-200 dark:border-violet-800' },
+    { label: 'Customer Segments', value: raw.target_market, icon: '👥', color: 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800' },
+    { label: 'Revenue Streams', value: revenueModel.map((r: any) => r.stream).join(', '), icon: '💰', color: 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800' },
+    { label: 'Key Activities', value: (ops.processes || []).slice(0, 3).join(', '), icon: '⚙️', color: 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800' },
+    { label: 'Key Resources', value: (ops.technology || []).slice(0, 3).join(', '), icon: '🔧', color: 'bg-cyan-50 dark:bg-cyan-950/30 border-cyan-200 dark:border-cyan-800' },
+    { label: 'Channels', value: raw.go_to_market?.channels?.join(', '), icon: '📢', color: 'bg-pink-50 dark:bg-pink-950/30 border-pink-200 dark:border-pink-800' },
+    { label: 'Cost Structure', value: raw.pricing_strategy?.model, icon: '📊', color: 'bg-orange-50 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800' },
+    { label: 'Mission', value: raw.mission, icon: '🎯', color: 'bg-indigo-50 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800' },
+    { label: 'Vision', value: raw.vision, icon: '🚀', color: 'bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800' },
   ].filter(s => s.value)
 
   return (
@@ -66,12 +73,15 @@ export default function BusinessPlanReportPage() {
       projectId={id!}
       reportType="business-plan"
       title="Business Plan"
-      subtitle={project ? `${project.business_name} · Full business blueprint` : ''}
-      accentColor="from-indigo-600 to-violet-600"
+      subtitle={`Project: ${project?.business_name || 'Unknown'} · Industry: ${project?.industry || 'N/A'}`}
+      projectData={project}
+      reportMetadata={report}
+      accentColor="from-emerald-600 to-teal-600"
       rawData={raw}
       loading={loading}
       error={error}
       onReload={loadData}
+      hideNavigation={hideNavigation}
     >
       {/* Executive Summary */}
       {raw.executive_summary && (

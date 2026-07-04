@@ -6,22 +6,22 @@ const SWOT_CONFIG: Record<string, SwotItem> = {
   strengths: {
     label: 'Strengths', color: 'text-emerald-600 dark:text-emerald-400',
     text: 'text-emerald-700 dark:text-emerald-300', dot: 'bg-emerald-500',
-    bg: 'bg-emerald-50 dark:bg-emerald-950/20', border: 'border-emerald-200 dark:border-emerald-800'
+    bg: 'bg-emerald-50 dark:bg-emerald-950/30', border: 'border-emerald-200 dark:border-emerald-800'
   },
   weaknesses: {
     label: 'Weaknesses', color: 'text-orange-600 dark:text-orange-400',
     text: 'text-orange-700 dark:text-orange-300', dot: 'bg-orange-500',
-    bg: 'bg-orange-50 dark:bg-orange-950/20', border: 'border-orange-200 dark:border-orange-800'
+    bg: 'bg-orange-50 dark:bg-orange-950/30', border: 'border-orange-200 dark:border-orange-800'
   },
   opportunities: {
     label: 'Opportunities', color: 'text-blue-600 dark:text-blue-400',
     text: 'text-blue-700 dark:text-blue-300', dot: 'bg-blue-500',
-    bg: 'bg-blue-50 dark:bg-blue-950/20', border: 'border-blue-200 dark:border-blue-800'
+    bg: 'bg-blue-50 dark:bg-blue-950/30', border: 'border-blue-200 dark:border-blue-800'
   },
   threats: {
     label: 'Threats', color: 'text-red-600 dark:text-red-400',
     text: 'text-red-700 dark:text-red-300', dot: 'bg-red-500',
-    bg: 'bg-red-50 dark:bg-red-950/20', border: 'border-red-200 dark:border-red-800'
+    bg: 'bg-red-50 dark:bg-red-950/30', border: 'border-red-200 dark:border-red-800'
   },
 }
 

@@ -82,14 +82,21 @@ function EmailCard({ email }: { email: any }) {
   )
 }
 
-export default function MarketingReportPage() {
-  const { id } = useParams<{ id: string }>()
+export default function MarketingReportPage({ projectId, hideNavigation, overrideData, overrideProject, overrideReportMetadata }: { projectId?: string, hideNavigation?: boolean, overrideData?: any, overrideProject?: any, overrideReportMetadata?: any } = {}) {
+  const params = useParams<{ id: string }>()
+  const id = projectId || params.id
   const [report, setReport] = useState<any>(null)
   const [project, setProject] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const loadData = async () => {
+    if (overrideData) {
+      setReport({ raw_data: overrideData, ...overrideReportMetadata })
+      setProject(overrideProject || { business_name: 'Historical Version' })
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
@@ -106,7 +113,7 @@ export default function MarketingReportPage() {
     }
   }
 
-  useEffect(() => { loadData() }, [id])
+  useEffect(() => { loadData() }, [id, overrideData])
 
   const raw = report?.raw_data || {}
   const strategy = raw.marketing_strategy || {}
@@ -141,12 +148,15 @@ export default function MarketingReportPage() {
       projectId={id!}
       reportType="marketing"
       title="Marketing Strategy"
-      subtitle={project ? `${project.business_name} · Social, SEO & growth` : ''}
+      subtitle={`Project: ${project?.business_name || 'Unknown'} · Industry: ${project?.industry || 'N/A'}`}
+      projectData={project}
+      reportMetadata={report}
       accentColor="from-pink-600 to-rose-600"
       rawData={raw}
       loading={loading}
       error={error}
       onReload={loadData}
+      hideNavigation={hideNavigation}
     >
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

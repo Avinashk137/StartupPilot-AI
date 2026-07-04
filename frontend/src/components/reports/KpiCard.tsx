@@ -9,6 +9,7 @@ interface KpiCardProps {
   iconColor?: string
   trend?: 'up' | 'down' | 'neutral'
   trendLabel?: string
+  badge?: React.ReactNode
   highlight?: boolean
   className?: string
 }
@@ -27,6 +28,7 @@ export default function KpiCard({
   iconColor = 'text-primary',
   trend,
   trendLabel,
+  badge,
   highlight = false,
   className,
 }: KpiCardProps) {
@@ -35,7 +37,7 @@ export default function KpiCard({
 
   return (
     <div className={cn(
-      'rounded-xl border border-border bg-card p-5 transition-all hover:shadow-md hover:-translate-y-0.5',
+      'rounded-xl border border-border bg-card p-5 transition-all hover:shadow-md hover:-translate-y-0.5 flex flex-col',
       highlight && 'border-primary/30 bg-primary/5',
       className
     )}>
@@ -45,16 +47,19 @@ export default function KpiCard({
             <Icon className={cn('w-4.5 h-4.5', iconColor)} />
           </div>
         )}
-        {TrendIcon && (
-          <div className="flex items-center gap-1">
-            <TrendIcon className={cn('w-3.5 h-3.5', trendColor)} />
-            {trendLabel && <span className={cn('text-xs font-medium', trendColor)}>{trendLabel}</span>}
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {TrendIcon && (
+            <div className="flex items-center gap-1">
+              <TrendIcon className={cn('w-3.5 h-3.5', trendColor)} />
+              {trendLabel && <span className={cn('text-xs font-medium', trendColor)}>{trendLabel}</span>}
+            </div>
+          )}
+          {badge && <div>{badge}</div>}
+        </div>
       </div>
       <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-1">{label}</p>
-      <p className={cn('text-2xl font-bold text-foreground leading-tight', highlight && 'text-primary')}>{value}</p>
-      {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+      <p className={cn('text-lg font-bold text-foreground leading-snug break-words', highlight && 'text-primary')}>{value}</p>
+      {sub && <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">{sub}</p>}
     </div>
   )
 }

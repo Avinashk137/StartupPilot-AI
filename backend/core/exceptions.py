@@ -56,6 +56,9 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "message": error["msg"],
             "type": error["type"],
         })
+    with open("backend_422.log", "a") as f:
+        import json
+        f.write(json.dumps(errors) + "\n")
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"success": False, "error": "Validation error", "details": errors},

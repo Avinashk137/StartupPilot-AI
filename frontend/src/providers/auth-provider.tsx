@@ -121,15 +121,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       if (AUTH_DEBUG) console.warn('[Auth] fetchUser failed:', err)
       setUser(null)
-      localStorage.removeItem('access_token')
-      localStorage.removeItem('refresh_token')
+      sessionStorage.removeItem('access_token')
+      sessionStorage.removeItem('refresh_token')
     }
   }, [])
 
-  // Restore session on mount if a token exists in localStorage
+  // Restore session on mount if a token exists in sessionStorage
   useEffect(() => {
     if (!isBackendReady) return
-    const token = localStorage.getItem('access_token')
+    const token = sessionStorage.getItem('access_token')
     if (AUTH_DEBUG) {
       console.log('[Auth] Initializing — stored access_token:', token ? `${token.substring(0, 20)}...` : 'none')
     }
@@ -152,8 +152,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user_email: data.user?.email,
       })
     }
-    localStorage.setItem('access_token', data.access_token)
-    localStorage.setItem('refresh_token', data.refresh_token)
+    sessionStorage.setItem('access_token', data.access_token)
+    sessionStorage.setItem('refresh_token', data.refresh_token)
     setUser(data.user as User)
     if (AUTH_DEBUG) console.log('[Auth] Login complete — tokens stored, user set')
   }
@@ -174,8 +174,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Email confirmation disabled — user is logged in immediately
-    localStorage.setItem('access_token', data.access_token)
-    localStorage.setItem('refresh_token', data.refresh_token)
+    sessionStorage.setItem('access_token', data.access_token)
+    sessionStorage.setItem('refresh_token', data.refresh_token)
     setUser(data.user as User)
     if (AUTH_DEBUG) console.log('[Auth] Register complete — user logged in immediately')
     return {}
@@ -191,8 +191,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Non-critical — local state is cleared regardless
       console.warn('[Auth] Server-side logout failed (session still cleared locally)', err)
     } finally {
-      localStorage.removeItem('access_token')
-      localStorage.removeItem('refresh_token')
+      sessionStorage.removeItem('access_token')
+      sessionStorage.removeItem('refresh_token')
       setUser(null)
       if (AUTH_DEBUG) console.log('[Auth] Local session cleared, redirecting to /login')
       window.location.href = '/login'

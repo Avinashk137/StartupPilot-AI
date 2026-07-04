@@ -31,6 +31,14 @@ const INDIAN_STATES = [
   'Jammu & Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
 ]
 
+const BUDGET_PRESETS = [
+  { label: '₹50,000', value: '50000' },
+  { label: '₹1,00,000', value: '100000' },
+  { label: '₹5,00,000', value: '500000' },
+  { label: '₹10,00,000', value: '1000000' },
+  { label: '₹50,00,000', value: '5000000' },
+]
+
 const TIMELINE_OPTIONS = [
   { value: '1 Month',  label: '1 Month'  },
   { value: '2 Months', label: '2 Months' },
@@ -40,14 +48,6 @@ const TIMELINE_OPTIONS = [
   { value: '18 Months', label: '18 Months' },
   { value: '24 Months', label: '24 Months (2 Years)' },
   { value: '36 Months', label: '36 Months (3 Years)' },
-]
-
-const BUDGET_PRESETS = [
-  { label: '₹50,000',    value: '50000'   },
-  { label: '₹1,00,000',  value: '100000'  },
-  { label: '₹5,00,000',  value: '500000'  },
-  { label: '₹10,00,000', value: '1000000' },
-  { label: '₹50,00,000', value: '5000000' },
 ]
 
 const STAGES = [
@@ -91,6 +91,8 @@ export default function CreateProjectPage() {
     timeline: '',
   })
 
+  const [customIndustry, setCustomIndustry] = useState('')
+
   const update = (field: string, value: string) => {
     setForm((f) => ({ ...f, [field]: value }))
     if (errors[field]) setErrors((e) => ({ ...e, [field]: '' }))
@@ -100,11 +102,15 @@ export default function CreateProjectPage() {
     const newErrors: Record<string, string> = {}
     if (step === 1) {
       if (!form.business_name.trim()) newErrors.business_name = 'Business name is required'
+      else if (form.business_name.length < 2) newErrors.business_name = 'Business name must be at least 2 characters'
+      else if (form.business_name.length > 100) newErrors.business_name = 'Business name must be less than 100 characters'
+
       if (!form.business_idea.trim()) newErrors.business_idea = 'Business idea is required'
-      if (!form.industry) newErrors.industry = 'Please select an industry'
+      else if (form.business_idea.trim().length < 10) newErrors.business_idea = 'Please provide a more detailed business idea (minimum 10 characters)'
+
+      if (!form.industry && !customIndustry.trim()) newErrors.industry = 'Please select an industry'
     }
     if (step === 2) {
-      if (!form.country.trim()) newErrors.country = 'Country is required'
       if (!form.state) newErrors.state = 'Please select your state'
     }
     if (step === 3) {
@@ -125,6 +131,7 @@ export default function CreateProjectPage() {
     try {
       const payload = {
         ...form,
+        industry: form.industry === 'Other' && customIndustry.trim() ? customIndustry.trim() : form.industry,
         budget: form.budget ? parseFloat(form.budget) : null,
       }
       const { data } = await api.post('/projects', payload)
@@ -141,17 +148,37 @@ export default function CreateProjectPage() {
 
       navigate(`/projects/${projectId}`)
     } catch (err: any) {
-      console.error(err)
+      console.error('[CreateProject] Failed:', err)
       let errorMsg = 'Failed to create project. Please try again.'
-      const detail = err?.response?.data?.detail
-      if (typeof detail === 'string') {
-        errorMsg = detail
-      } else if (Array.isArray(detail)) {
-        errorMsg = detail.map((d: any) => {
-          const field = d.loc?.[d.loc.length - 1] || 'Field'
-          return `${field}: ${d.msg}`
-        }).join(' | ')
+      const responseData = err?.response?.data
+      
+      if (responseData) {
+        // Handle specific string messages
+        if (responseData.error && typeof responseData.error === 'string' && responseData.error !== 'Validation error') {
+          errorMsg = responseData.error
+        } 
+        
+        // Handle detail string (FastAPI default)
+        const detail = responseData.detail
+        if (typeof detail === 'string') {
+          errorMsg = detail
+        } 
+        // Handle detail array (FastAPI default validation errors)
+        else if (Array.isArray(detail)) {
+          errorMsg = detail.map((d: any) => {
+            const field = d.loc?.[d.loc.length - 1] || 'Field'
+            return `${field}: ${d.msg}`
+          }).join(' | ')
+        }
+        // Handle details array (Our custom validation_exception_handler)
+        else if (Array.isArray(responseData.details)) {
+          errorMsg = responseData.details.map((d: any) => {
+            const field = d.field || 'Field'
+            return `${field}: ${d.message || d.msg}`
+          }).join(' | ')
+        }
       }
+      
       setErrors({ submit: errorMsg })
     } finally {
       setLoading(false)
@@ -249,6 +276,14 @@ export default function CreateProjectPage() {
                     </select>
                     <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
                   </div>
+                  {form.industry === 'Other' && (
+                    <Input
+                      placeholder="Enter your industry (optional), e.g. Drone Services, EV Rental, Space Tech"
+                      value={customIndustry}
+                      onChange={(e) => setCustomIndustry(e.target.value)}
+                      className="mt-2"
+                    />
+                  )}
                   {errors.industry && <p className="text-xs text-destructive">{errors.industry}</p>}
                 </div>
               </motion.div>
@@ -265,15 +300,13 @@ export default function CreateProjectPage() {
               >
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="country">Country <span className="text-destructive">*</span></Label>
+                    <Label htmlFor="country">Country</Label>
                     <Input
                       id="country"
-                      placeholder="e.g., India"
-                      value={form.country}
-                      onChange={(e) => update('country', e.target.value)}
-                      className={cn(errors.country && 'border-destructive')}
+                      value="India 🇮🇳"
+                      disabled
+                      className="bg-muted text-muted-foreground font-medium"
                     />
-                    {errors.country && <p className="text-xs text-destructive">{errors.country}</p>}
                   </div>
 
                   <div className="space-y-2">
@@ -335,17 +368,9 @@ export default function CreateProjectPage() {
                 <div className="space-y-2">
                   <Label>Budget <span className="text-destructive">*</span></Label>
                   <div className="flex gap-2">
-                    <select
-                      value={form.budget_currency}
-                      onChange={(e) => update('budget_currency', e.target.value)}
-                      className="h-10 px-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring w-24"
-                    >
-                      <option value="INR">INR ₹</option>
-                      <option value="USD">USD $</option>
-                      <option value="EUR">EUR €</option>
-                      <option value="GBP">GBP £</option>
-                      <option value="AUD">AUD $</option>
-                    </select>
+                    <div className="flex items-center justify-center px-4 bg-muted text-muted-foreground rounded-lg border border-input text-sm font-medium">
+                      ₹ (INR)
+                    </div>
                     <Input
                       type="number"
                       placeholder="e.g., 500000"
@@ -358,9 +383,8 @@ export default function CreateProjectPage() {
                   {errors.budget && <p className="text-xs text-destructive">{errors.budget}</p>}
 
                   {/* Budget quick-select presets (INR) */}
-                  {form.budget_currency === 'INR' && (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {BUDGET_PRESETS.map((preset) => (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {BUDGET_PRESETS.map((preset) => (
                         <button
                           key={preset.value}
                           type="button"
@@ -376,7 +400,6 @@ export default function CreateProjectPage() {
                         </button>
                       ))}
                     </div>
-                  )}
                   <p className="text-xs text-muted-foreground">Total startup budget available</p>
                 </div>
 
@@ -479,8 +502,8 @@ export default function CreateProjectPage() {
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                     <div className="flex gap-1"><span className="text-muted-foreground">Name:</span> <span className="font-medium text-foreground truncate">{form.business_name || '-'}</span></div>
                     <div className="flex gap-1"><span className="text-muted-foreground">Industry:</span> <span className="font-medium text-foreground">{form.industry || '-'}</span></div>
-                    <div className="flex gap-1"><span className="text-muted-foreground">Location:</span> <span className="font-medium text-foreground">{form.state ? `${form.state}, ${form.country}` : form.country || '-'}</span></div>
-                    <div className="flex gap-1"><span className="text-muted-foreground">Budget:</span> <span className="font-medium text-foreground">{form.budget ? `${form.budget_currency} ${Number(form.budget).toLocaleString('en-IN')}` : '-'}</span></div>
+                    <div className="flex gap-1"><span className="text-muted-foreground">Location:</span> <span className="font-medium text-foreground">{form.state ? `${form.state}, India` : 'India'}</span></div>
+                    <div className="flex gap-1"><span className="text-muted-foreground">Budget:</span> <span className="font-medium text-foreground">{form.budget ? `₹ ${Number(form.budget).toLocaleString('en-IN')}` : '-'}</span></div>
                     <div className="flex gap-1"><span className="text-muted-foreground">Timeline:</span> <span className="font-medium text-foreground">{form.timeline || '-'}</span></div>
                     <div className="flex gap-1"><span className="text-muted-foreground">Risk:</span> <span className="font-medium text-foreground capitalize">{form.risk_appetite}</span></div>
                   </div>

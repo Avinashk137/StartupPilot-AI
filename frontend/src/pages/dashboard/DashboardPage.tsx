@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import {
   Rocket, Plus, ArrowRight,
-  CheckCircle, Clock, Loader, XCircle, Activity, Bell
+  CheckCircle, Clock, Loader, XCircle, Activity, Bell, AlertTriangle
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,9 @@ import { Progress } from '@/components/ui/progress'
 import { cn, formatRelativeTime, getScoreColor } from '@/lib/utils'
 import api from '@/lib/api'
 import { Breadcrumb } from '@/components/navigation/Breadcrumb'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { DashboardInsightsModal } from './DashboardInsightsModal'
+import { DashboardNotificationsPopup } from './DashboardNotificationsPopup'
 
 // ── Status Badge ─────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
@@ -40,26 +43,46 @@ export default function DashboardPage() {
   const [projects, setProjects] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const loadDashboard = async () => {
-      try {
-        const [statsRes, activityRes, notifRes, projectsRes] = await Promise.all([
-          api.get('/dashboard/stats'),
-          api.get('/dashboard/activity?limit=5'),
-          api.get('/dashboard/notifications?limit=4'),
-          api.get('/projects?limit=3'),
-        ])
-        setStats(statsRes.data.data)
-        setActivity(activityRes.data.data)
-        setNotifications(notifRes.data.data)
-        setProjects(projectsRes.data.data)
-      } catch (err) {
-        console.error('Dashboard load failed', err)
-      } finally {
-        setLoading(false)
-      }
+  // Insights Modal State
+  const [insightsModalOpen, setInsightsModalOpen] = useState(false)
+  const [activeInsightsFilter, setActiveInsightsFilter] = useState('all')
+
+  const handleKPIClick = (label: string) => {
+    let filter = 'all'
+    if (label === 'Completed') filter = 'completed'
+    if (label === 'Partial') filter = 'partial'
+    if (label === 'Failed') filter = 'failed'
+    
+    setActiveInsightsFilter(filter)
+    setInsightsModalOpen(true)
+  }
+
+  const loadDashboard = async (isBackground = false) => {
+    if (!isBackground) setLoading(true)
+    try {
+      const [statsRes, activityRes, notifRes, projectsRes] = await Promise.all([
+        api.get('/dashboard/stats'),
+        api.get('/dashboard/activity?limit=5'),
+        api.get('/dashboard/notifications?limit=4'),
+        api.get('/projects?limit=3'),
+      ])
+      setStats(statsRes.data.data)
+      setActivity(activityRes.data.data)
+      setNotifications(notifRes.data.data)
+      setProjects(projectsRes.data.data)
+    } catch (err) {
+      console.error('Dashboard load failed', err)
+    } finally {
+      if (!isBackground) setLoading(false)
     }
+  }
+
+  useEffect(() => {
     loadDashboard()
+    const intervalId = setInterval(() => {
+      loadDashboard(true)
+    }, 5000)
+    return () => clearInterval(intervalId)
   }, [])
 
 
@@ -93,33 +116,110 @@ export default function DashboardPage() {
       </motion.div>
 
       {/* ── Overview Stats ───────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Projects', value: stats?.total_projects || 0, icon: FolderIcon, color: 'text-primary' },
-          { label: 'Completed', value: stats?.completed_projects || 0, icon: CheckCircle, color: 'text-green-500' },
-          { label: 'Partial', value: stats?.partial_projects || 0, icon: Activity, color: 'text-amber-500' },
-          { label: 'Notifications', value: stats?.unread_notifications || 0, icon: Bell, color: 'text-orange-500' },
-        ].map((stat, i) => (
-          <motion.div
-            key={stat.label}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.08 }}
-          >
-            <Card className="card-hover">
-              <CardContent className="p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">{stat.label}</p>
-                    <p className="text-3xl font-bold mt-1 text-foreground">{stat.value}</p>
+      <TooltipProvider>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            { 
+              label: 'Total Projects', 
+              subtitle: 'All business ideas',
+              value: stats?.total_projects || 0, 
+              icon: FolderIcon, 
+              color: 'text-primary',
+              bgLight: 'bg-primary/5',
+              tooltip: 'Total number of projects belonging to you, including all statuses.',
+              link: '/projects',
+              actionLabel: 'View All'
+            },
+            { 
+              label: 'Completed', 
+              subtitle: 'Ready to use',
+              value: stats?.completed_projects || 0, 
+              icon: CheckCircle, 
+              color: 'text-emerald-500',
+              bgLight: 'bg-emerald-500/5',
+              tooltip: 'Projects where all five AI reports were generated successfully.',
+              link: '/projects?status=completed',
+              actionLabel: 'Open Reports'
+            },
+            { 
+              label: 'Partial', 
+              subtitle: 'Needs attention',
+              value: stats?.partial_projects || 0, 
+              icon: AlertTriangle, 
+              color: 'text-amber-500',
+              bgLight: 'bg-amber-500/5',
+              tooltip: 'Projects where at least one report failed but others completed.',
+              link: '/projects?status=partial',
+              actionLabel: 'Resume Analysis'
+            },
+            { 
+              label: 'Notifications', 
+              subtitle: 'Unread updates',
+              value: stats?.unread_notifications || 0, 
+              icon: Bell, 
+              color: 'text-orange-500',
+              bgLight: 'bg-orange-500/5',
+              tooltip: 'Unread updates and alerts regarding your projects and agents.',
+              link: '/notifications',
+              actionLabel: 'View Notifications'
+            },
+          ].map((stat, i) => {
+            const cardContent = (
+              <Card className="h-full flex flex-col relative overflow-hidden transition-all duration-300 hover:shadow-md hover:-translate-y-1 hover:border-primary/40 cursor-pointer">
+                {/* Top gradient border on hover */}
+                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                
+                <CardContent className="p-5 flex flex-col flex-1">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="text-3xl font-bold text-foreground">{stat.value}</p>
+                      <p className="text-sm font-medium text-foreground mt-2">{stat.label}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{stat.subtitle}</p>
+                    </div>
+                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform duration-300 group-hover:scale-110", stat.bgLight)}>
+                      <stat.icon className={cn("w-5 h-5", stat.color)} />
+                    </div>
                   </div>
-                  <stat.icon className={cn("w-8 h-8 opacity-80", stat.color)} />
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </div>
+                  
+                  <div className="mt-auto pt-4 flex items-center text-xs font-medium text-muted-foreground group-hover:text-primary transition-colors">
+                    {stat.actionLabel}
+                    <ArrowRight className="w-3 h-3 ml-1 transform group-hover:translate-x-1 transition-transform" />
+                  </div>
+                </CardContent>
+              </Card>
+            )
+
+            return (
+              <motion.div
+                key={stat.label}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.08 }}
+                className="h-full"
+              >
+                {stat.label === 'Notifications' ? (
+                  <DashboardNotificationsPopup>
+                    <div className="block h-full group">
+                      {cardContent}
+                    </div>
+                  </DashboardNotificationsPopup>
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div onClick={() => handleKPIClick(stat.label)} className="block h-full group">
+                        {cardContent}
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-[200px] text-center">
+                      <p>{stat.tooltip}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+              </motion.div>
+            )
+          })}
+        </div>
+      </TooltipProvider>
 
       {/* ── Call To Action ──────────────────────────────────────── */}
       {(!stats?.total_projects) && (
@@ -240,6 +340,12 @@ export default function DashboardPage() {
           </Card>
         </div>
       </div>
+
+      <DashboardInsightsModal 
+        open={insightsModalOpen} 
+        onOpenChange={setInsightsModalOpen}
+        initialFilter={activeInsightsFilter} 
+      />
     </div>
   )
 }

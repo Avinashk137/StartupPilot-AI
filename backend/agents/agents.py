@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional, List
 
 
 SECTION_REQUIRED_KEYS = {
-    "research": ["market_size", "tam", "growth_rate", "pain_points", "opportunities"],
+    "research": ["potential_customers", "monthly_revenue_opportunity", "business_demand", "target_customers", "competition_level", "success_potential", "pain_points", "opportunities"],
     "competitor": ["competitors", "market_gaps", "swot_analysis", "competitive_advantages"],
     "business_plan": ["executive_summary", "mission", "value_proposition", "revenue_model", "growth_strategy"],
     "finance": ["startup_costs", "monthly_costs", "revenue_forecast", "profit_forecast", "breakeven_analysis"],
@@ -31,12 +31,12 @@ def build_context_summary(project: dict) -> str:
         "high":   "Aggressive -- high-risk, high-reward strategies; rapid, bold growth",
     }
     risk_desc = risk_map.get(risk, risk_map["medium"])
-    currency = project.get("budget_currency", "INR")
+    currency = "INR"
     budget = project.get("budget", "N/A")
     timeline = project.get("timeline", "N/A")
     state = project.get("state", "")
-    country = project.get("country", "India")
-    location = f"{state}, {country}" if state else country
+    country = "India"
+    location = f"{state}, India" if state else "India"
 
     return "\n".join([
         f"Business Name: {project.get('business_name', 'N/A')}",
@@ -44,18 +44,18 @@ def build_context_summary(project: dict) -> str:
         f"Industry: {project.get('industry', 'N/A')}",
         f"Location: {location}",
         f"Target Audience: {project.get('target_audience', 'N/A')}",
-        f"Budget: {currency} {budget}",
-        f"Currency: {currency} (use this currency for ALL financial figures)",
+        f"Budget: INR {budget}",
+        f"Currency: INR (use Indian Rupees for ALL financial figures)",
         f"Business Stage: {project.get('business_stage', 'idea')}",
         f"Risk Appetite: {risk.upper()} -- {risk_desc}",
         f"Timeline: {timeline}",
         f"Goals: {project.get('goals', 'N/A')}",
         "",
         "CRITICAL INSTRUCTIONS:",
-        f"- ALL monetary values MUST be in {currency}",
-        f"- Strategies MUST reflect the {risk.upper()} risk appetite",
-        f"- Market analysis MUST focus on the {location} region",
-        f"- Financial projections MUST align with a {timeline} timeline",
+        "- ALL monetary values MUST be in INR using Indian numbering formats (Lakhs, Crores).",
+        f"- Strategies MUST reflect the {risk.upper()} risk appetite.",
+        f"- Market analysis MUST focus exclusively on the {location} (Indian) market.",
+        f"- Financial projections MUST align with a {timeline} timeline.",
     ])
 
 
@@ -75,16 +75,29 @@ class MasterPromptBuilder:
 - CMO / Growth Marketer
 
 Your job: produce a COMPLETE, DETAILED startup analysis for the given business.
-Provide specific, realistic numbers. Be thorough and business-focused.
-ALL monetary values must use the currency specified in the project data.
-RESPOND WITH ONLY A VALID JSON OBJECT. No markdown, no explanations."""
 
-    def build_master_prompt(self, project: dict, missing_sections: Optional[List[str]] = None) -> str:
+QUALITY RULES:
+1. Be SPECIFIC to the industry and location — avoid generic advice.
+2. Use CONCRETE numbers, not vague estimates.
+3. NEVER repeat the same point in different words.
+4. Keep descriptions concise — 1-2 sentences max per item.
+5. Structure data as arrays of objects, not paragraphs.
+6. ALL monetary values must use INR (Indian Rupees).
+7. Base all projections, research, and analysis on the Indian market.
+8. RESPOND WITH ONLY A VALID JSON OBJECT. No markdown, no explanations, no code fences."""
+
+    def build_master_prompt(self, project: dict, missing_sections: Optional[List[str]] = None, research_context: Optional[dict] = None) -> str:
         ctx = build_context_summary(project)
-        currency = project.get("budget_currency", "INR")
+        
+        if research_context:
+            import json
+            ctx += "\n\nCRITICAL CONTEXT FROM MARKET RESEARCH:\n"
+            ctx += "The following market research MUST be used as the foundational truth for your analysis. Ensure all competitors, strategies, and financial models align with these market realities:\n"
+            ctx += json.dumps(research_context, indent=2)
+        currency = "INR"
         state = project.get("state", "")
-        country = project.get("country", "India")
-        location = f"{state}, {country}" if state else country
+        country = "India"
+        location = f"{state}, India" if state else "India"
         risk = project.get("risk_appetite", "medium")
         budget = project.get("budget", 50000)
         industry = project.get("industry", "general")
@@ -101,11 +114,12 @@ RESPOND WITH ONLY A VALID JSON OBJECT. No markdown, no explanations."""
         schema_chunks = {}
 
         schema_chunks["research"] = f"""  "research": {{
-    "market_size": "total market size with {currency}",
-    "tam": "Total Addressable Market in {location} in {currency}",
-    "sam": "Serviceable Addressable Market in {currency}",
-    "som": "Serviceable Obtainable Market first-year estimate in {currency}",
-    "growth_rate": "Annual market growth rate %",
+    "potential_customers": "estimate how many people in {location} may need this (e.g. '12,000 - 18,000')",
+    "monthly_revenue_opportunity": "realistic monthly revenue based on demand, use Indian numbering for INR (e.g. '₹2.5L - ₹4L per month')",
+    "business_demand": {{"level": "High/Medium/Low", "score": "integer 0-100"}},
+    "target_customers": ["customer type 1", "customer type 2"],
+    "competition_level": {{"level": "High/Medium/Low", "competitor_count": "integer count of nearby businesses"}},
+    "success_potential": {{"score": "integer 0-100", "explanation": "one-line explanation (e.g. 'Strong demand with manageable competition')"}},
     "growth_trends": [
       {{"trend": "name", "description": "detail for {location}", "impact": "high/medium/low"}}
     ],
@@ -211,7 +225,7 @@ RESPOND WITH ONLY A VALID JSON OBJECT. No markdown, no explanations."""
         schema_chunks["finance"] = f"""  "finance": {{
     "startup_costs": {{
       "total": 50000,
-      "breakdown": [{{"item": "name", "amount": 5000, "category": "technology/marketing/operations/legal", "one_time": true}}]
+      "breakdown": [{{"item": "name", "amount": 5000, "category": "technology/marketing/operations/legal", "one_time": "true"}}]
     }},
     "monthly_costs": {{
       "total": 8000,
@@ -343,13 +357,19 @@ IMPORTANT -- Adjust ALL numbers realistically:
 
 Generate complete, realistic data for ALL 5 sections. Do not skip or abbreviate any section."""
 
-    def build_section_prompt(self, section: str, project: dict) -> str:
+    def build_section_prompt(self, section: str, project: dict, research_context: Optional[dict] = None) -> str:
         """Build a targeted mini-prompt to regenerate a single missing/failed section."""
         ctx = build_context_summary(project)
-        currency = project.get("budget_currency", "INR")
+        
+        if research_context and section != "research":
+            import json
+            ctx += "\n\nCRITICAL CONTEXT FROM MARKET RESEARCH:\n"
+            ctx += "The following market research MUST be used as the foundational truth for your analysis. Ensure all competitors, strategies, and financial models align with these market realities:\n"
+            ctx += json.dumps(research_context, indent=2)
+        currency = "INR"
         state = project.get("state", "")
-        country = project.get("country", "India")
-        location = f"{state}, {country}" if state else country
+        country = "India"
+        location = f"{state}, India" if state else "India"
         risk = project.get("risk_appetite", "medium")
         budget = project.get("budget", 50000)
         industry = project.get("industry", "general")
@@ -376,11 +396,12 @@ Generate complete, realistic data for ALL 5 sections. Do not skip or abbreviate 
 
 Return ONLY a JSON object (no other text) with this structure:
 {{
-  "market_size": "total market size in {currency}",
-  "tam": "Total Addressable Market in {location} in {currency}",
-  "sam": "Serviceable Addressable Market in {currency}",
-  "som": "Serviceable Obtainable Market first-year estimate in {currency}",
-  "growth_rate": "Annual growth rate %",
+  "potential_customers": "estimate how many people in {location} may need this (e.g. '12,000 - 18,000')",
+  "monthly_revenue_opportunity": "realistic monthly revenue based on demand, use Indian numbering for INR (e.g. '₹2.5L - ₹4L per month')",
+  "business_demand": {{"level": "High/Medium/Low", "score": 88}},
+  "target_customers": ["customer type 1", "customer type 2"],
+  "competition_level": {{"level": "High/Medium/Low", "competitor_count": 18}},
+  "success_potential": {{"score": 91, "explanation": "one-line explanation"}},
   "growth_trends": [{{"trend": "name", "description": "detail for {location}", "impact": "high/medium/low"}}],
   "customer_segments": [{{"segment": "name", "size": "% of market", "description": "who they are", "pain_points": ["pain1"]}}],
   "pain_points": ["pain1", "pain2", "pain3", "pain4", "pain5"],
@@ -469,11 +490,13 @@ Timeline: {timeline}
 Budget: {currency} {budget}
 Industry: {industry}
 
-Return ONLY a JSON object with numbers ONLY (no currency symbols in numeric fields):
+Return ONLY a JSON object with numbers ONLY (no currency symbols in numeric fields).
+Generate realistic month-by-month data for ALL 12 months.
+
 {{
   "startup_costs": {{
     "total": 50000,
-    "breakdown": [{{"item": "name", "amount": 5000, "category": "technology/marketing/operations/legal", "one_time": true}}]
+    "breakdown": [{{"item": "name", "amount": 5000, "category": "technology/marketing/operations/legal", "one_time": "true"}}]
   }},
   "monthly_costs": {{
     "total": 8000,
@@ -481,44 +504,17 @@ Return ONLY a JSON object with numbers ONLY (no currency symbols in numeric fiel
   }},
   "revenue_forecast": [
     {{"month": 1, "revenue": 2000, "customers": 5, "avg_revenue_per_customer": 400}},
-    {{"month": 2, "revenue": 3500, "customers": 9, "avg_revenue_per_customer": 389}},
-    {{"month": 3, "revenue": 5000, "customers": 13, "avg_revenue_per_customer": 385}},
-    {{"month": 4, "revenue": 7000, "customers": 18, "avg_revenue_per_customer": 389}},
-    {{"month": 5, "revenue": 9500, "customers": 24, "avg_revenue_per_customer": 396}},
     {{"month": 6, "revenue": 12000, "customers": 30, "avg_revenue_per_customer": 400}},
-    {{"month": 7, "revenue": 15000, "customers": 37, "avg_revenue_per_customer": 405}},
-    {{"month": 8, "revenue": 18000, "customers": 44, "avg_revenue_per_customer": 409}},
-    {{"month": 9, "revenue": 22000, "customers": 53, "avg_revenue_per_customer": 415}},
-    {{"month": 10, "revenue": 26000, "customers": 62, "avg_revenue_per_customer": 419}},
-    {{"month": 11, "revenue": 30000, "customers": 71, "avg_revenue_per_customer": 423}},
     {{"month": 12, "revenue": 35000, "customers": 82, "avg_revenue_per_customer": 427}}
   ],
   "profit_forecast": [
     {{"month": 1, "revenue": 2000, "costs": 8000, "profit": -6000, "margin": -300}},
-    {{"month": 2, "revenue": 3500, "costs": 8200, "profit": -4700, "margin": -134}},
-    {{"month": 3, "revenue": 5000, "costs": 8400, "profit": -3400, "margin": -68}},
-    {{"month": 4, "revenue": 7000, "costs": 8600, "profit": -1600, "margin": -23}},
-    {{"month": 5, "revenue": 9500, "costs": 8800, "profit": 700, "margin": 7}},
     {{"month": 6, "revenue": 12000, "costs": 9000, "profit": 3000, "margin": 25}},
-    {{"month": 7, "revenue": 15000, "costs": 9500, "profit": 5500, "margin": 37}},
-    {{"month": 8, "revenue": 18000, "costs": 10000, "profit": 8000, "margin": 44}},
-    {{"month": 9, "revenue": 22000, "costs": 10500, "profit": 11500, "margin": 52}},
-    {{"month": 10, "revenue": 26000, "costs": 11000, "profit": 15000, "margin": 58}},
-    {{"month": 11, "revenue": 30000, "costs": 11500, "profit": 18500, "margin": 62}},
     {{"month": 12, "revenue": 35000, "costs": 12000, "profit": 23000, "margin": 66}}
   ],
   "cashflow_forecast": [
     {{"month": 1, "inflow": 2000, "outflow": 58000, "net": -56000, "cumulative": -56000}},
-    {{"month": 2, "inflow": 3500, "outflow": 8200, "net": -4700, "cumulative": -60700}},
-    {{"month": 3, "inflow": 5000, "outflow": 8400, "net": -3400, "cumulative": -64100}},
-    {{"month": 4, "inflow": 7000, "outflow": 8600, "net": -1600, "cumulative": -65700}},
-    {{"month": 5, "inflow": 9500, "outflow": 8800, "net": 700, "cumulative": -65000}},
     {{"month": 6, "inflow": 12000, "outflow": 9000, "net": 3000, "cumulative": -62000}},
-    {{"month": 7, "inflow": 15000, "outflow": 9500, "net": 5500, "cumulative": -56500}},
-    {{"month": 8, "inflow": 18000, "outflow": 10000, "net": 8000, "cumulative": -48500}},
-    {{"month": 9, "inflow": 22000, "outflow": 10500, "net": 11500, "cumulative": -37000}},
-    {{"month": 10, "inflow": 26000, "outflow": 11000, "net": 15000, "cumulative": -22000}},
-    {{"month": 11, "inflow": 30000, "outflow": 11500, "net": 18500, "cumulative": -3500}},
     {{"month": 12, "inflow": 35000, "outflow": 12000, "net": 23000, "cumulative": 19500}}
   ],
   "breakeven_analysis": {{
@@ -549,6 +545,7 @@ Return ONLY a JSON object with numbers ONLY (no currency symbols in numeric fiel
   "currency": "{currency}"
 }}
 
+IMPORTANT: Generate ALL 12 months (month 1 through 12) in revenue_forecast, profit_forecast, and cashflow_forecast arrays. The 3 months shown above are examples only.
 Adjust ALL numbers realistically for: budget={currency} {budget}, industry={industry}, risk={risk.upper()}."""
 
     def _marketing_prompt(self, ctx, currency, location, risk, budget, industry, timeline) -> str:

@@ -32,3 +32,4 @@ tenacity
 
 # Dev Tools
 ruff
+json-repair

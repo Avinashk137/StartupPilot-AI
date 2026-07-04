@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 import { Breadcrumb } from '@/components/navigation/Breadcrumb'
+import { useExportPDF } from '@/hooks/useExportPDF'
 
 interface ReportShellProps {
   projectId: string
@@ -21,6 +22,9 @@ interface ReportShellProps {
   loading?: boolean
   error?: string | null
   onReload?: () => void
+  hideNavigation?: boolean
+  projectData?: any
+  reportMetadata?: any
 }
 
 function buildMarkdown(title: string, data: any): string {
@@ -80,28 +84,27 @@ export default function ReportShell({
   loading = false,
   error = null,
   onReload,
+  hideNavigation = false,
+  projectData,
+  reportMetadata,
 }: ReportShellProps) {
   const [copied, setCopied] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   const [regenError, setRegenError] = useState<string | null>(null)
+  const [regenProgress, setRegenProgress] = useState<{ step: string; percent: number } | null>(null)
+  const [regenSuccess, setRegenSuccess] = useState(false)
+  const { exportToPDF, isExporting } = useExportPDF()
 
-  const handleCopy = () => {
-    const md = buildMarkdown(title, rawData)
-    navigator.clipboard.writeText(md).then(() => {
+  const handleCopy = async () => {
+    try {
       setCopied(true)
+      const res = await api.get(`/projects/${projectId}/reports/${reportType}/markdown`)
+      await navigator.clipboard.writeText(res.data)
       setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
-  const handleDownload = () => {
-    const md = buildMarkdown(title, rawData)
-    const blob = new Blob([md], { type: 'text/markdown' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${title.replace(/\s+/g, '-').toLowerCase()}.md`
-    a.click()
-    URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Failed to copy markdown', err)
+      setCopied(false)
+    }
   }
 
   const handlePrint = () => window.print()
@@ -109,39 +112,65 @@ export default function ReportShell({
   const handleRegenerate = async () => {
     setRegenerating(true)
     setRegenError(null)
+    setRegenProgress(null)
+    setRegenSuccess(false)
     try {
       await api.post(`/projects/${projectId}/reports/${reportType}/regenerate`)
-      // Poll every 2s until report is no longer 'running'
+      
       let attempts = 0
-      const maxAttempts = 30 // 60 seconds max
+      const maxAttempts = 60 // 120 seconds max
       const poll = setInterval(async () => {
         attempts++
         try {
-          // Try to fetch the report — it returns 202 while running, 200 when done
-          await api.get(`/projects/${projectId}/reports/${reportType}`)
+          const res = await api.get(`/projects/${projectId}/reports/${reportType}`)
+          
+          if (res.status === 202) {
+            const detail = res.data?.detail
+            if (detail && typeof detail === 'object') {
+              setRegenProgress({
+                step: detail.progress_step || 'Regenerating...',
+                percent: detail.progress_percent || 0
+              })
+            }
+            return
+          }
+          
           // Success — report is completed
           clearInterval(poll)
           setRegenerating(false)
-          onReload?.()
+          setRegenProgress(null)
+          setRegenSuccess(true)
+          
+          setTimeout(() => {
+            setRegenSuccess(false)
+            onReload?.()
+          }, 1500)
         } catch (pollErr: any) {
-          const status = pollErr?.response?.status
-          if (status === 202) {
-            // Still running — keep polling
+          if (pollErr?.response?.status === 202) {
+            const detail = pollErr.response.data?.detail
+            if (detail && typeof detail === 'object') {
+              setRegenProgress({
+                step: detail.progress_step || 'Regenerating...',
+                percent: detail.progress_percent || 0
+              })
+            }
             return
           }
           // Any other error (404 = failed, 500 = error) — stop polling
           clearInterval(poll)
           setRegenerating(false)
-          onReload?.() // Reload to show error state
+          setRegenProgress(null)
+          setRegenError(pollErr?.response?.data?.detail || 'Regeneration failed')
         }
+        
         if (attempts >= maxAttempts) {
           clearInterval(poll)
           setRegenerating(false)
-          onReload?.()
+          setRegenError('Timeout waiting for regeneration')
         }
       }, 2000)
     } catch (err: any) {
-      setRegenError(err?.response?.data?.detail || 'Regeneration failed')
+      setRegenError(err?.response?.data?.detail || 'Failed to start regeneration')
       setRegenerating(false)
     }
   }
@@ -151,12 +180,14 @@ export default function ReportShell({
   if (error) {
     return (
       <div className="max-w-5xl space-y-4">
-        <Breadcrumb projectId={projectId} projectName={subtitle?.split(' · ')[0] || 'Project'} reportType={reportType} />
-        <Link to={`/projects/${projectId}`}>
-          <button className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-            <ArrowLeft className="w-4 h-4" /> Back to Project
-          </button>
-        </Link>
+        {!hideNavigation && <Breadcrumb projectId={projectId} projectName={subtitle?.split(' · ')[0] || 'Project'} reportType={reportType} />}
+        {!hideNavigation && (
+          <Link to={`/projects/${projectId}`}>
+            <button className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <ArrowLeft className="w-4 h-4" /> Back to Project
+            </button>
+          </Link>
+        )}
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-8 text-center space-y-4">
           <AlertCircle className="w-10 h-10 text-destructive mx-auto" />
           <p className="font-semibold text-foreground text-lg">{title} — Not Generated Yet</p>
@@ -172,30 +203,34 @@ export default function ReportShell({
   }
 
   return (
-    <div className="space-y-6 max-w-5xl print:max-w-full">
-      <Breadcrumb projectId={projectId} projectName={subtitle?.split(' · ')[0] || 'Project'} reportType={reportType} />
+    <div id="report-pdf-content" className="space-y-6 max-w-5xl print:max-w-full">
+      {!hideNavigation && <Breadcrumb projectId={projectId} projectName={subtitle?.split(' · ')[0] || 'Project'} reportType={reportType} />}
       
       {/* Back navigation + export toolbar */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-3 print:hidden">
-          <Link to={`/projects/${projectId}`}>
-            <button className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-              <ArrowLeft className="w-4 h-4" /> Back to Project
-            </button>
-          </Link>
-          <div className="flex items-center gap-2">
+          {!hideNavigation && (
+            <Link to={`/projects/${projectId}`}>
+              <button className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <ArrowLeft className="w-4 h-4" /> Back to Project
+              </button>
+            </Link>
+          )}
+          <div className="flex items-center gap-2 ml-auto">
             {regenError && (
               <span className="text-xs text-destructive">{regenError}</span>
             )}
             <Button
-              variant="outline"
+              variant={regenSuccess ? "default" : "outline"}
               size="sm"
               onClick={handleRegenerate}
-              disabled={regenerating}
-              className="gap-1.5 h-8 text-xs"
+              disabled={regenerating || regenSuccess}
+              className={cn("gap-1.5 h-8 text-xs transition-colors", regenSuccess && "bg-green-600 hover:bg-green-700 text-white")}
             >
-              {regenerating ? (
-                <><Loader className="w-3 h-3 animate-spin" /> Regenerating…</>
+              {regenSuccess ? (
+                <><Check className="w-3 h-3" /> Report Updated</>
+              ) : regenerating ? (
+                <><Loader className="w-3 h-3 animate-spin" /> {regenProgress ? `${regenProgress.percent}%` : 'Regenerating…'}</>
               ) : (
                 <><RefreshCw className="w-3 h-3" /> Regenerate</>
               )}
@@ -203,8 +238,23 @@ export default function ReportShell({
             <Button variant="outline" size="sm" onClick={handleCopy} className="gap-1.5 h-8 text-xs">
               {copied ? <><Check className="w-3 h-3 text-green-500" /> Copied</> : <><Copy className="w-3 h-3" /> Copy MD</>}
             </Button>
-            <Button variant="outline" size="sm" onClick={handleDownload} className="gap-1.5 h-8 text-xs">
-              <Download className="w-3 h-3" /> Download
+            <Button 
+              variant="outline" 
+              size="sm" 
+              disabled={isExporting}
+              className="gap-1.5 h-8 text-xs"
+              onClick={async () => {
+                const projName = projectData?.business_name?.replace(/\s+/g, '') || 'Project'
+                const dateStr = new Date().toISOString().split('T')[0]
+                const fileName = `${projName}_${title.replace(/\s+/g, '')}_${dateStr}.pdf`
+                const success = await exportToPDF('report-pdf-content', fileName)
+                if (success) {
+                  alert('PDF downloaded successfully.')
+                }
+              }}
+            >
+              {isExporting ? <Loader className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+              {isExporting ? 'Generating PDF...' : 'Download PDF'}
             </Button>
             <Button variant="outline" size="sm" onClick={handlePrint} className="gap-1.5 h-8 text-xs">
               <Printer className="w-3 h-3" /> Print
@@ -222,12 +272,41 @@ export default function ReportShell({
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-foreground tracking-tight">{title}</h1>
-                {subtitle && <p className="text-muted-foreground text-sm mt-1">{subtitle}</p>}
+                
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-muted-foreground">
+                  {projectData && (
+                    <>
+                      <span className="font-medium text-foreground">Project: {projectData.business_name || 'Unknown'}</span>
+                      {projectData.industry && <span>Industry: {projectData.industry}</span>}
+                      {projectData.country && <span>Country: {projectData.country}</span>}
+                    </>
+                  )}
+                  {reportMetadata && (
+                    <>
+                      {reportMetadata.version && <span>Version: {reportMetadata.version}</span>}
+                      {reportMetadata.updated_at && (
+                        <span>Generated: {new Date(reportMetadata.updated_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span>
+                      )}
+                      {reportMetadata.provider_used && <span className="capitalize">Provider: {reportMetadata.provider_used.replace('_', ' ')}</span>}
+                    </>
+                  )}
+                </div>
+                
                 {regenerating && (
-                  <p className="text-xs text-primary mt-2 flex items-center gap-1.5">
-                    <Loader className="w-3 h-3 animate-spin" />
-                    Regenerating this report… refreshing in ~8 seconds.
-                  </p>
+                  <div className="mt-3">
+                    <p className="text-xs text-primary flex items-center gap-1.5 font-medium">
+                      <Loader className="w-3 h-3 animate-spin" />
+                      {regenProgress ? `${regenProgress.step} (${regenProgress.percent}%)` : 'Regenerating this report...'}
+                    </p>
+                    <div className="h-1.5 w-64 bg-primary/10 rounded-full mt-2 overflow-hidden">
+                      <motion.div 
+                        className="h-full bg-primary" 
+                        initial={{ width: 0 }} 
+                        animate={{ width: `${regenProgress?.percent || 0}%` }} 
+                        transition={{ duration: 0.5 }}
+                      />
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

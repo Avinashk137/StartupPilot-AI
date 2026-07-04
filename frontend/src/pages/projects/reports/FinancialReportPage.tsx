@@ -33,14 +33,21 @@ const CustomTooltip = ({ active, payload, label, currency = 'USD' }: any) => {
   return null
 }
 
-export default function FinancialReportPage() {
-  const { id } = useParams<{ id: string }>()
+export default function FinancialReportPage({ projectId, hideNavigation, overrideData, overrideProject, overrideReportMetadata }: { projectId?: string, hideNavigation?: boolean, overrideData?: any, overrideProject?: any, overrideReportMetadata?: any } = {}) {
+  const params = useParams<{ id: string }>()
+  const id = projectId || params.id
   const [report, setReport] = useState<any>(null)
   const [project, setProject] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const loadData = async () => {
+    if (overrideData) {
+      setReport({ raw_data: overrideData, ...overrideReportMetadata })
+      setProject(overrideProject || { business_name: 'Historical Version' })
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
@@ -57,7 +64,7 @@ export default function FinancialReportPage() {
     }
   }
 
-  useEffect(() => { loadData() }, [id])
+  useEffect(() => { loadData() }, [id, overrideData])
 
   const currency = project?.budget_currency || 'USD'
   const raw = report?.raw_data || {}
@@ -97,12 +104,15 @@ export default function FinancialReportPage() {
       projectId={id!}
       reportType="finance"
       title="Financial Report"
-      subtitle={project ? `${project.business_name} · 12-Month Projections` : ''}
-      accentColor="from-emerald-600 to-cyan-600"
+      subtitle={`Project: ${project?.business_name || 'Unknown'} · Industry: ${project?.industry || 'N/A'}`}
+      projectData={project}
+      reportMetadata={report}
+      accentColor="from-amber-600 to-orange-600"
       rawData={raw}
       loading={loading}
       error={error}
       onReload={loadData}
+      hideNavigation={hideNavigation}
     >
       {/* KPI Cards */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-2 md:grid-cols-4 gap-4">

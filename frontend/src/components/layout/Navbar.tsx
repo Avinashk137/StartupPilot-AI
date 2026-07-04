@@ -1,6 +1,5 @@
 import { useLocation, Link } from 'react-router-dom'
-import { Bell, Plus, Moon, Sun } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Bell, Moon, Sun } from 'lucide-react'
 import { useAuth } from '@/providers/auth-provider'
 import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
@@ -30,7 +29,7 @@ export function Navbar({ theme, onThemeToggle }: NavbarProps) {
   }
 
   return (
-    <header className="h-16 border-b border-border bg-background/80 backdrop-blur-sm flex items-center gap-4 px-6 shrink-0 sticky top-0 z-30">
+    <header className="h-16 border-b border-border bg-background/80 backdrop-blur-sm flex items-center gap-4 px-6 shrink-0 sticky top-0 z-30 print:hidden">
       {/* Greeting */}
       <div className="hidden md:flex items-center gap-1 text-sm text-muted-foreground ml-4">
         <span>{greeting()},</span>
@@ -67,14 +66,6 @@ export function Navbar({ theme, onThemeToggle }: NavbarProps) {
           />
         </div>
       </button>
-
-      {/* New Project */}
-      <Link to="/projects/new">
-        <Button size="sm" className="gap-1.5">
-          <Plus className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">New Project</span>
-        </Button>
-      </Link>
 
       {/* Notifications */}
       <Link to="/notifications">
