@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import api from '@/lib/api';
 import { downloadService } from '@/lib/downloadService';
 import { useToast } from '@/hooks/use-toast';
@@ -272,40 +273,43 @@ export default function ExportsPage() {
             />
           </div>
           <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-            <select 
-              className="flex h-10 w-full md:w-36 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              <option value="all">All Statuses</option>
-              <option value="completed">Completed</option>
-              <option value="processing">Processing</option>
-              <option value="failed">Failed</option>
-            </select>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="w-full md:w-[150px]">
+                <SelectValue placeholder="All Statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="processing">Processing</SelectItem>
+                <SelectItem value="failed">Failed</SelectItem>
+              </SelectContent>
+            </Select>
 
-            <select 
-              className="flex h-10 w-full md:w-44 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
-              value={reportType}
-              onChange={(e) => setReportType(e.target.value)}
-            >
-              <option value="all">All Reports</option>
-              <option value="research">Market Research</option>
-              <option value="competitor">Competitor Analysis</option>
-              <option value="business_plan">Business Plan</option>
-              <option value="financial">Financial Report</option>
-              <option value="marketing">Marketing Strategy</option>
-            </select>
+            <Select value={reportType} onValueChange={setReportType}>
+              <SelectTrigger className="w-full md:w-[180px]">
+                <SelectValue placeholder="All Reports" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Reports</SelectItem>
+                <SelectItem value="research">Market Research</SelectItem>
+                <SelectItem value="competitor">Competitor Analysis</SelectItem>
+                <SelectItem value="business_plan">Business Plan</SelectItem>
+                <SelectItem value="financial">Financial Report</SelectItem>
+                <SelectItem value="marketing">Marketing Strategy</SelectItem>
+              </SelectContent>
+            </Select>
 
-            <select 
-              className="flex h-10 w-full md:w-36 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
-              value={sort}
-              onChange={(e) => setSort(e.target.value)}
-            >
-              <option value="newest">Newest First</option>
-              <option value="oldest">Oldest First</option>
-              <option value="downloads">Most Downloaded</option>
-              <option value="project">Project Name</option>
-            </select>
+            <Select value={sort} onValueChange={setSort}>
+              <SelectTrigger className="w-full md:w-[160px]">
+                <SelectValue placeholder="Sort By" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Newest First</SelectItem>
+                <SelectItem value="oldest">Oldest First</SelectItem>
+                <SelectItem value="downloads">Most Downloaded</SelectItem>
+                <SelectItem value="project">Project Name</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>

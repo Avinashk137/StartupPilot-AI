@@ -268,7 +268,6 @@ async def run_agents(
         supabase_admin.table("projects").update({
             "status": "partial",
             "current_agent": None,
-            "current_step": None,
             "error_message": "Previous run was stalled and has been reset. Retrying.",
         }).eq("id", project_id).execute()
         project["status"] = "partial"
@@ -330,7 +329,6 @@ async def run_agents(
         supabase_admin.table("projects").update({
             "ai_diagnostics": diagnostics,
             "status": "processing",
-            "current_step": "Starting",
             "heartbeat": datetime.now(timezone.utc).isoformat(),
         }).eq("id", project_id).execute()
     except Exception as update_err:
@@ -338,7 +336,8 @@ async def run_agents(
         supabase_admin.table("projects").update({"status": "processing"}).eq("id", project_id).execute()
 
     # --- 6. Launch background pipeline ---
-    background_tasks.add_task(_run_agent_pipeline, project, job_id, target_sections)
+    import asyncio
+    asyncio.create_task(_run_agent_pipeline(project, job_id, target_sections))
 
     mode_label = "retry" if payload.retry_mode else ("resume" if payload.resume_mode else "full")
     return {
@@ -376,7 +375,6 @@ async def get_project_status(
             "status": project.get("status"),
             "progress_percent": project.get("progress_percent"),
             "current_agent": project.get("current_agent"),
-            "current_step": project.get("current_step"),
             "heartbeat": project.get("heartbeat"),
             "error_message": project.get("error_message"),
             "completed_at": project.get("completed_at"),
@@ -410,8 +408,7 @@ async def _run_agent_pipeline(project: dict, job_id: str, target_sections=None):
                 "status": "failed",
                 "error_message": f"Pipeline error: {str(e)[:500]}",
                 "current_agent": None,
-                "current_step": None,
-            }).eq("id", project_id).execute()
+                }).eq("id", project_id).execute()
         except Exception:
             pass
 

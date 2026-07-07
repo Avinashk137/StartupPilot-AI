@@ -59,8 +59,8 @@ TABLE_MAP = {
 TOTAL_SECTIONS = len(SECTION_KEYS)
 
 # Retry delays per attempt (seconds)
-RETRY_DELAYS = [5, 15, 30, 60]
-MAX_RETRIES = len(RETRY_DELAYS)  # 4 retries
+RETRY_DELAYS = [3, 10, 20]
+MAX_RETRIES = 5  # Total 6 attempts (initial + 5 retries)
 
 # Single provider call timeout (seconds)
 PROVIDER_TIMEOUT = 90
@@ -169,7 +169,6 @@ class AgentOrchestrator:
                         "status": "completed",
                         "progress_percent": 100,
                         "current_agent": None,
-                        "current_step": None,
                         "completed_at": datetime.now(timezone.utc).isoformat(),
                     })
                     return {"cached": True}
@@ -198,7 +197,6 @@ class AgentOrchestrator:
                 "status": "processing",
                 "progress_percent": base_progress,
                 "current_agent": missing_sections[0] if missing_sections else None,
-                "current_step": "Starting",
                 "error_message": None,
             })
             await self._heartbeat(project_id)
@@ -220,8 +218,8 @@ class AgentOrchestrator:
                     research_context=None,
                     base_progress=base_progress,
                     on_progress=on_progress,
-                    ai_quality=ai_quality,
-                    ai_provider=ai_provider,
+                    ai_quality=user_settings.get("ai_quality", "balanced"),
+                    ai_provider=user_settings.get("ai_provider", "auto"),
                 )
 
                 if result["success"]:
@@ -272,7 +270,6 @@ class AgentOrchestrator:
 
                 self._update_project(project_id, {
                     "current_agent": missing_sections[0],
-                    "current_step": "Running parallel analysis" if run_parallel else "Running sequential analysis",
                     "progress_percent": base_progress,
                 })
                 await self._heartbeat(project_id)
@@ -289,8 +286,8 @@ class AgentOrchestrator:
                             on_progress=on_progress,
                             effective_retry_delays=effective_retry_delays,
                             effective_max_retries=effective_max_retries,
-                            ai_quality=ai_quality,
-                            ai_provider=ai_provider,
+                            ai_quality=user_settings.get("ai_quality", "balanced"),
+                            ai_provider=user_settings.get("ai_provider", "auto"),
                         )
                         for sk in missing_sections
                     ]
@@ -308,8 +305,8 @@ class AgentOrchestrator:
                             on_progress=on_progress,
                             effective_retry_delays=effective_retry_delays,
                             effective_max_retries=effective_max_retries,
-                            ai_quality=ai_quality,
-                            ai_provider=ai_provider,
+                            ai_quality=user_settings.get("ai_quality", "balanced"),
+                            ai_provider=user_settings.get("ai_provider", "auto"),
                         )
                         parallel_results.append(result)
 
@@ -388,7 +385,6 @@ class AgentOrchestrator:
                     (SECTION_PROGRESS.get(s, 0) for s in final_done), default=0
                 ),
                 "current_agent": None,
-                "current_step": None,
                 "completed_at": datetime.now(timezone.utc).isoformat(),
                 "input_hash": input_hash,
             }
@@ -478,7 +474,6 @@ class AgentOrchestrator:
                 "status": "failed",
                 "error_message": f"Pipeline crashed: {error_msg}",
                 "current_agent": None,
-                "current_step": None,
             })
             try:
                 await self._create_notification(
@@ -515,7 +510,6 @@ class AgentOrchestrator:
         self._update_project(project_id, {
             "status": "processing",
             "current_agent": section_key,
-            "current_step": "Starting regeneration",
             "progress_percent": base_progress,
         })
         await self._heartbeat(project_id)
@@ -603,24 +597,27 @@ class AgentOrchestrator:
 
         for attempt in range(max_retries + 1):
             if attempt > 0:
-                delay = retry_delays[attempt - 1] if attempt - 1 < len(retry_delays) else retry_delays[-1]
+                # Custom retry logic: 3s, 10s, 20s, switch provider (0s delay), final retry (10s)
+                if attempt == 1: delay = 3
+                elif attempt == 2: delay = 10
+                elif attempt == 3: delay = 20
+                elif attempt == 4: delay = 0 # Switch provider iteration
+                else: delay = 10
+                
                 logger.warning(
                     f"Retrying {section_key} (attempt {attempt + 1}/{max_retries + 1}) after {delay}s",
                     project_id=project_id,
                     last_error=last_error[:200],
                 )
-                # Update DB so UI shows retry status
                 self._update_project(project_id, {
                     "current_agent": section_key,
-                    "current_step": f"Retry {attempt}/{max_retries} — waiting {delay}s",
                 })
                 await self._heartbeat(project_id)
-                await asyncio.sleep(delay)
+                if delay > 0:
+                    await asyncio.sleep(delay)
 
-            # Update step: about to call AI
             self._update_project(project_id, {
                 "current_agent": section_key,
-                "current_step": "Generating prompt",
             })
             await self._heartbeat(project_id)
 
@@ -628,11 +625,6 @@ class AgentOrchestrator:
                 prompt = self.prompt_builder.build_section_prompt(
                     section_key, project, research_context=research_context
                 )
-
-                self._update_project(project_id, {
-                    "current_step": "Calling AI provider",
-                })
-                await self._heartbeat(project_id)
 
                 temp = 0.4
                 tokens = 8192
@@ -643,23 +635,26 @@ class AgentOrchestrator:
                     temp = 0.2
                     tokens = 16384
 
+                # Attempt 4 forces OpenAI if 'auto'
+                current_provider = "openai" if (attempt == 4 and ai_provider == "auto") else ai_provider
+
                 response, parsed = await ai_service.generate_json(
                     prompt=prompt,
                     system_prompt=self.prompt_builder.SYSTEM_PROMPT,
                     temperature=temp,
                     max_tokens=tokens,
-                    preferred_provider=None if ai_provider == "auto" else ai_provider,
+                    preferred_provider=None if current_provider == "auto" else current_provider,
                 )
 
                 provider_used = response.provider
                 tokens = response.tokens_used
 
-                self._update_project(project_id, {
-                    "current_step": "Parsing response",
-                })
-                await self._heartbeat(project_id)
-
                 if self._is_valid_section(section_key, parsed):
+                    # Validation: Response exists, Length > minimum, Markdown valid, JSON valid
+                    report_content = parsed.get("report", "")
+                    if not report_content or len(report_content.strip()) < 500:
+                        raise ValueError(f"Generated report is too short or empty (length: {len(report_content)}). Requesting retry.")
+
                     runtime_ms = (asyncio.get_event_loop().time() - t_start) * 1000
                     logger.info(
                         f"Agent '{section_key}' succeeded",
@@ -668,9 +663,6 @@ class AgentOrchestrator:
                         provider=provider_used,
                         runtime_ms=round(runtime_ms),
                     )
-                    self._update_project(project_id, {
-                        "current_step": "Saving report",
-                    })
                     return {
                         "success": True,
                         "data": parsed,
@@ -947,7 +939,6 @@ class AgentOrchestrator:
                 "status": new_status,
                 "progress_percent": progress,
                 "current_agent": None,
-                "current_step": None,
             }
             if new_status == "completed":
                 update["completed_at"] = datetime.now(timezone.utc).isoformat()

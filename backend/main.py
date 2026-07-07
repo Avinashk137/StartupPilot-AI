@@ -22,17 +22,47 @@ from .core.supabase_client import supabase_admin
 from .api.exception_middleware import ExceptionLoggingMiddleware
 
 
-# Configure structured logging
+import logging
+import sys
+
+# Ensure logs directory exists
+os.makedirs("backend/logs", exist_ok=True)
+
+# 1. Standard library logging setup
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(message)s",
+    handlers=[
+        logging.FileHandler("backend/logs/server.log"),
+    ]
+)
+
+# 2. Add a console handler that only shows WARNING and above
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.WARNING)
+logging.getLogger().addHandler(console_handler)
+
+# 3. Silence noisy third-party loggers
+for logger_name in ["uvicorn", "uvicorn.error", "uvicorn.access", "fastapi", "watchfiles", "watchfiles.main"]:
+    noisy_logger = logging.getLogger(logger_name)
+    noisy_logger.setLevel(logging.WARNING)
+    noisy_logger.propagate = False
+    noisy_logger.addHandler(logging.FileHandler("backend/logs/server.log"))
+
+# 4. Configure structlog to output to standard logger
 structlog.configure(
     processors=[
+        structlog.stdlib.filter_by_level,
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.stdlib.add_log_level,
         structlog.processors.StackInfoRenderer(),
-        structlog.dev.ConsoleRenderer(),
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.format_exc_info,
+        structlog.processors.JSONRenderer(),
     ],
-    wrapper_class=structlog.make_filtering_bound_logger(20),
-    context_class=dict,
-    logger_factory=structlog.PrintLoggerFactory(),
+    wrapper_class=structlog.stdlib.BoundLogger,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    cache_logger_on_first_use=True,
 )
 
 logger = structlog.get_logger()

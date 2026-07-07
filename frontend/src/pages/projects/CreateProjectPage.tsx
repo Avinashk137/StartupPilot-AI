@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import api from '@/lib/api'
 
@@ -259,23 +260,16 @@ export default function CreateProjectPage() {
 
                 <div className="space-y-2">
                   <Label>Industry <span className="text-destructive">*</span></Label>
-                  <div className="relative">
-                    <select
-                      value={form.industry}
-                      onChange={(e) => update('industry', e.target.value)}
-                      className={cn(
-                        'w-full h-10 px-3 pr-10 rounded-lg border border-input bg-background text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-ring transition-all',
-                        errors.industry && 'border-destructive',
-                        !form.industry && 'text-muted-foreground'
-                      )}
-                    >
-                      <option value="">Select an industry</option>
+                  <Select value={form.industry} onValueChange={(val) => update('industry', val)}>
+                    <SelectTrigger className={errors.industry ? 'border-destructive' : ''}>
+                      <SelectValue placeholder="Select an industry" />
+                    </SelectTrigger>
+                    <SelectContent>
                       {INDUSTRIES.map((ind) => (
-                        <option key={ind} value={ind}>{ind}</option>
+                        <SelectItem key={ind} value={ind}>{ind}</SelectItem>
                       ))}
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-                  </div>
+                    </SelectContent>
+                  </Select>
                   {form.industry === 'Other' && (
                     <Input
                       placeholder="Enter your industry (optional), e.g. Drone Services, EV Rental, Space Tech"
@@ -311,23 +305,16 @@ export default function CreateProjectPage() {
 
                   <div className="space-y-2">
                     <Label>State <span className="text-destructive">*</span></Label>
-                    <div className="relative">
-                      <select
-                        value={form.state}
-                        onChange={(e) => update('state', e.target.value)}
-                        className={cn(
-                          'w-full h-10 px-3 pr-10 rounded-lg border border-input bg-background text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-ring transition-all',
-                          errors.state && 'border-destructive',
-                          !form.state && 'text-muted-foreground'
-                        )}
-                      >
-                        <option value="">Select state</option>
+                    <Select value={form.state} onValueChange={(val) => update('state', val)}>
+                      <SelectTrigger className={errors.state ? 'border-destructive' : ''}>
+                        <SelectValue placeholder="Select state" />
+                      </SelectTrigger>
+                      <SelectContent>
                         {INDIAN_STATES.map((st) => (
-                          <option key={st} value={st}>{st}</option>
+                          <SelectItem key={st} value={st}>{st}</SelectItem>
                         ))}
-                      </select>
-                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-                    </div>
+                      </SelectContent>
+                    </Select>
                     {errors.state && <p className="text-xs text-destructive">{errors.state}</p>}
                   </div>
                 </div>
@@ -405,23 +392,16 @@ export default function CreateProjectPage() {
 
                 <div className="space-y-2">
                   <Label>Timeline <span className="text-destructive">*</span></Label>
-                  <div className="relative">
-                    <select
-                      value={form.timeline}
-                      onChange={(e) => update('timeline', e.target.value)}
-                      className={cn(
-                        'w-full h-10 px-3 pr-10 rounded-lg border border-input bg-background text-sm appearance-none focus:outline-none focus:ring-2 focus:ring-ring transition-all',
-                        errors.timeline && 'border-destructive',
-                        !form.timeline && 'text-muted-foreground'
-                      )}
-                    >
-                      <option value="">Select timeline</option>
+                  <Select value={form.timeline} onValueChange={(val) => update('timeline', val)}>
+                    <SelectTrigger className={errors.timeline ? 'border-destructive' : ''}>
+                      <SelectValue placeholder="Select timeline" />
+                    </SelectTrigger>
+                    <SelectContent>
                       {TIMELINE_OPTIONS.map((opt) => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                       ))}
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-                  </div>
+                    </SelectContent>
+                  </Select>
                   {errors.timeline && <p className="text-xs text-destructive">{errors.timeline}</p>}
                   <p className="text-xs text-muted-foreground">How long until you expect to achieve your primary goal?</p>
                 </div>

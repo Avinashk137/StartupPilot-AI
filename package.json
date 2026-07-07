@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently -k -p \"[{name}]\" -n \"Frontend,Backend\" -c \"cyan.bold,green.bold\" \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev": "node scripts/start-dev.js",
     "dev:frontend": "cd frontend && npm run dev",
     "dev:backend": "set PYTHONIOENCODING=utf-8&& cd backend && venv\\Scripts\\activate && fastapi dev main.py",
     "install:all": "npm install && cd frontend && npm install && cd ../backend && venv\\Scripts\\activate && pip install -r requirements.txt"
