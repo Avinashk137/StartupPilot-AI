@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
+import { useReportActions, ReportMetadata } from '@/hooks/useReportActions';
+import { usePrint } from '@/providers/PrintProvider';
 import { motion } from 'framer-motion';
 import { 
   Download, Search, Filter, FileText, FileBarChart, PieChart, 
   TrendingUp, Target, MoreVertical, Eye, Printer, Copy, RefreshCw, 
-  Share2, Trash2, CheckCircle2, XCircle, Clock, AlertCircle, FileSpreadsheet
+  Share2, Trash2, CheckCircle2, XCircle, Clock, AlertCircle, FileSpreadsheet,
+  Loader
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,8 +21,24 @@ import { downloadService } from '@/lib/downloadService';
 import { useToast } from '@/hooks/use-toast';
 import ReactMarkdown from 'react-markdown';
 
+// Import report pages
+import ResearchReportPage from '@/pages/projects/reports/ResearchReportPage';
+import CompetitorReportPage from '@/pages/projects/reports/CompetitorReportPage';
+import BusinessPlanReportPage from '@/pages/projects/reports/BusinessPlanReportPage';
+import FinancialReportPage from '@/pages/projects/reports/FinancialReportPage';
+import MarketingReportPage from '@/pages/projects/reports/MarketingReportPage';
 export default function ExportsPage() {
   const { toast } = useToast();
+  const { 
+    handleDownloadPDF, 
+    handleCopyMarkdown, 
+    handlePrint, 
+    handleRegenerate,
+    isCopying,
+    isRegenerating
+  } = useReportActions();
+  const { isPrinting } = usePrint();
+  
   const [stats, setStats] = useState<any>(null);
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,7 +92,11 @@ export default function ExportsPage() {
     setPreviewExport({ ...exp, content_rendered: '' });
     try {
       const res = await api.get(`/exports/${exp.id}/preview`);
-      setPreviewExport({ ...exp, content_rendered: res.data.markdown || JSON.stringify(res.data.content, null, 2) });
+      setPreviewExport({ 
+        ...exp, 
+        content_rendered: res.data.markdown || JSON.stringify(res.data.content, null, 2),
+        content_raw: res.data.content 
+      });
     } catch (err) {
       toast({ title: "Failed to load preview", variant: "destructive" });
       setPreviewExport(null);
@@ -106,76 +129,58 @@ export default function ExportsPage() {
     }
   };
 
-  const handleDownloadPDF = async (exp: any) => {
-    // Quick load content if not previewed
+  const createMeta = (exp: any): ReportMetadata => ({
+    projectName: exp.project_name || 'Project',
+    reportTypeStr: exp.report_type.replace('_', ' '),
+    industry: exp.industry,
+    dateStr: new Date(exp.created_at).toLocaleDateString(),
+    provider: exp.generated_by
+  });
+
+  const onDownloadPDF = async (exp: any) => {
     try {
-      toast({ title: "Generating PDF..." });
-      let contentToRender = '';
-      if (previewExport && previewExport.id === exp.id) {
-        contentToRender = previewExport.content_rendered;
-      } else {
+      let contentToPrint = previewExport?.content_raw;
+      if (!previewExport || previewExport.id !== exp.id) {
+        toast({ title: "Loading report data for PDF..." });
         const res = await api.get(`/exports/${exp.id}/preview`);
-        contentToRender = res.data.markdown;
+        contentToPrint = res.data.content;
       }
-      
-      // We create a temporary hidden div to render the markdown to HTML for html2pdf
-      const tempDiv = document.createElement('div');
-      tempDiv.id = 'temp-pdf-container';
-      tempDiv.className = 'prose max-w-none p-8 dark:prose-invert bg-white dark:bg-gray-900 text-black dark:text-white';
-      
-      // Very basic markdown to HTML for PDF (In real app we'd render the React component)
-      tempDiv.innerHTML = `
-        <div style="text-align:center; margin-bottom: 2rem;">
-          <h1>${exp.project_name}</h1>
-          <h2 style="color:#666;">${exp.report_type.replace('_', ' ').toUpperCase()}</h2>
-          <p>Generated on ${new Date(exp.created_at).toLocaleDateString()}</p>
-        </div>
-        <div style="white-space: pre-wrap;">${contentToRender}</div>
-      `;
-      document.body.appendChild(tempDiv);
-      
-      const filename = `${exp.project_name.replace(/ /g, '_')}_${exp.report_type}.pdf`;
-      await downloadService.generatePDF('temp-pdf-container', filename);
-      
-      document.body.removeChild(tempDiv);
-      
-      // ping server to update download count
-      api.post(`/exports/${exp.id}/download/pdf`);
-      fetchStats();
-      fetchReports();
+      const filename = `${(exp.project_name || 'Report').replace(/ /g, '_')}_${exp.report_type}.pdf`;
+      const meta = createMeta(exp);
+      const projectData = { business_name: exp.project_name, industry: exp.industry };
+      await handleDownloadPDF(exp.report_type, contentToPrint, projectData, exp, filename, meta);
+      api.post(`/exports/${exp.id}/download/pdf`).catch(() => {});
     } catch (err) {
-      toast({ title: "PDF generation failed", variant: "destructive" });
+      console.error(err);
+      toast({ title: "Print dialog failed", variant: "destructive" });
     }
   };
 
-  const handlePrint = (exp: any) => {
-    handlePreview(exp).then(() => {
-      setTimeout(() => {
-        downloadService.print('preview-content');
-      }, 500);
-    });
-  };
-
-  const handleCopyMarkdown = async (exp: any) => {
+  const onPrint = async (exp: any) => {
     try {
-      const res = await api.get(`/exports/${exp.id}/preview`);
-      await navigator.clipboard.writeText(res.data.markdown);
-      toast({ title: "Copied Successfully!" });
+      let contentToPrint = previewExport?.content_raw;
+      if (!previewExport || previewExport.id !== exp.id) {
+        toast({ title: "Loading report data for Print..." });
+        const res = await api.get(`/exports/${exp.id}/preview`);
+        contentToPrint = res.data.content;
+      }
+      const filename = `${(exp.project_name || 'Report').replace(/ /g, '_')}_${exp.report_type}.pdf`;
+      const meta = createMeta(exp);
+      const projectData = { business_name: exp.project_name, industry: exp.industry };
+      await handlePrint(exp.report_type, contentToPrint, projectData, exp, filename, meta);
     } catch (err) {
-      toast({ title: "Copy failed", variant: "destructive" });
+      console.error(err);
+      toast({ title: "Print dialog failed", variant: "destructive" });
     }
   };
 
-  const handleRegenerate = async (exp: any) => {
+  const onCopyMarkdown = (exp: any) => {
+    handleCopyMarkdown(exp.project_id, exp.report_type, createMeta(exp), exp.id);
+  };
+
+  const onRegenerate = (exp: any) => {
     if (!confirm(`Are you sure you want to regenerate the ${exp.report_type}? This will overwrite the current export.`)) return;
-    try {
-      toast({ title: "Starting regeneration..." });
-      await api.post(`/reports/${exp.project_id}/${exp.report_type}/regenerate`);
-      toast({ title: "Regeneration queued. Check status shortly." });
-      setTimeout(fetchReports, 2000);
-    } catch (err) {
-      toast({ title: "Failed to start regeneration", variant: "destructive" });
-    }
+    handleRegenerate(exp.project_id, exp.report_type, fetchReports);
   };
 
   const handleShare = (exp: any) => {
@@ -201,7 +206,7 @@ export default function ExportsPage() {
       case 'research': return <Search className="w-4 h-4 text-blue-500"/>;
       case 'competitor': return <Target className="w-4 h-4 text-red-500"/>;
       case 'business_plan': return <FileText className="w-4 h-4 text-emerald-500"/>;
-      case 'financial': return <TrendingUp className="w-4 h-4 text-yellow-500"/>;
+      case 'finance': return <TrendingUp className="w-4 h-4 text-yellow-500"/>;
       case 'marketing': return <PieChart className="w-4 h-4 text-purple-500"/>;
       default: return <FileText className="w-4 h-4"/>;
     }
@@ -294,7 +299,7 @@ export default function ExportsPage() {
                 <SelectItem value="research">Market Research</SelectItem>
                 <SelectItem value="competitor">Competitor Analysis</SelectItem>
                 <SelectItem value="business_plan">Business Plan</SelectItem>
-                <SelectItem value="financial">Financial Report</SelectItem>
+                <SelectItem value="finance">Financial Report</SelectItem>
                 <SelectItem value="marketing">Marketing Strategy</SelectItem>
               </SelectContent>
             </Select>
@@ -388,7 +393,7 @@ export default function ExportsPage() {
                             </PopoverTrigger>
                             <PopoverContent className="w-56 p-1" align="end">
                               <div className="text-xs font-medium text-muted-foreground px-2 py-1.5 uppercase">Downloads</div>
-                              <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" onClick={() => handleDownloadPDF(exp)}>
+                              <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" onClick={() => onDownloadPDF(exp)}>
                                 <FileText className="w-4 h-4 mr-2" /> Download PDF
                               </Button>
                               <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" onClick={() => handleDownloadServer(exp, 'docx')}>
@@ -404,16 +409,16 @@ export default function ExportsPage() {
                               <div className="h-px bg-border my-1" />
                               <div className="text-xs font-medium text-muted-foreground px-2 py-1.5 uppercase">Actions</div>
                               
-                              <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" onClick={() => handleCopyMarkdown(exp)}>
+                              <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" onClick={() => onCopyMarkdown(exp)}>
                                 <Copy className="w-4 h-4 mr-2" /> Copy Markdown
                               </Button>
-                              <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" onClick={() => handlePrint(exp)}>
+                              <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" onClick={() => onPrint(exp)}>
                                 <Printer className="w-4 h-4 mr-2" /> Print
                               </Button>
                               <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" onClick={() => handleShare(exp)}>
                                 <Share2 className="w-4 h-4 mr-2" /> Share
                               </Button>
-                              <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" onClick={() => handleRegenerate(exp)}>
+                              <Button variant="ghost" size="sm" className="w-full justify-start text-sm h-8" onClick={() => onRegenerate(exp)}>
                                 <RefreshCw className="w-4 h-4 mr-2" /> Regenerate
                               </Button>
                               
@@ -449,8 +454,9 @@ export default function ExportsPage() {
 
       {/* PREVIEW DIALOG */}
       <Dialog open={!!previewExport} onOpenChange={(v) => !v && setPreviewExport(null)}>
-        <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col p-0 overflow-hidden">
-          <DialogHeader className="px-6 py-4 border-b bg-muted/30">
+        <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col p-0 overflow-hidden bg-background">
+          {/* Dialog Header — hidden in print. Report content provides its own print header via ReportShell. */}
+          <DialogHeader className="px-6 py-4 border-b bg-muted/30 z-10 sticky top-0 print:hidden">
             <div className="flex justify-between items-start">
               <div>
                 <DialogTitle className="text-xl capitalize flex items-center gap-2">
@@ -462,27 +468,46 @@ export default function ExportsPage() {
                 </p>
               </div>
               <div className="flex gap-2 mr-6 print:hidden">
-                <Button size="sm" variant="outline" onClick={() => handlePrint(previewExport)}>
+                <Button size="sm" variant="outline" onClick={() => onPrint(previewExport)}>
                   <Printer className="w-4 h-4 mr-2" /> Print
                 </Button>
-                <Button size="sm" onClick={() => handleDownloadPDF(previewExport)}>
+                <Button size="sm" onClick={() => onDownloadPDF(previewExport)}>
                   <Download className="w-4 h-4 mr-2" /> PDF
                 </Button>
               </div>
             </div>
           </DialogHeader>
           
-          <div id="preview-content" className="flex-1 overflow-y-auto p-8 bg-white dark:bg-gray-950">
+          <div id="preview-content" className="flex-1 overflow-y-auto p-0 md:p-6 bg-background">
             {previewLoading ? (
-              <div className="space-y-4">
+              <div className="space-y-4 p-8">
                 <Skeleton className="h-8 w-3/4" />
                 <Skeleton className="h-4 w-full" />
                 <Skeleton className="h-4 w-5/6" />
                 <Skeleton className="h-4 w-4/6" />
                 <Skeleton className="h-32 w-full mt-8" />
               </div>
+            ) : previewExport?.content_raw && typeof previewExport.content_raw === 'object' ? (
+              (() => {
+                const dataToPass = previewExport.content_raw;
+                const projectToPass = { business_name: previewExport.project_name, industry: previewExport.industry, country: 'Unknown' };
+                const metaToPass = { version: previewExport.version, updated_at: previewExport.created_at, provider_used: previewExport.generated_by };
+                
+                switch(previewExport.report_type) {
+                  case 'research': return <ResearchReportPage hideNavigation={true} overrideData={dataToPass} overrideProject={projectToPass} overrideReportMetadata={metaToPass} />;
+                  case 'competitor': return <CompetitorReportPage hideNavigation={true} overrideData={dataToPass} overrideProject={projectToPass} overrideReportMetadata={metaToPass} />;
+                  case 'business_plan': return <BusinessPlanReportPage hideNavigation={true} overrideData={dataToPass} overrideProject={projectToPass} overrideReportMetadata={metaToPass} />;
+                  case 'finance': return <FinancialReportPage hideNavigation={true} overrideData={dataToPass} overrideProject={projectToPass} overrideReportMetadata={metaToPass} />;
+                  case 'marketing': return <MarketingReportPage hideNavigation={true} overrideData={dataToPass} overrideProject={projectToPass} overrideReportMetadata={metaToPass} />;
+                  default: return (
+                    <article className="prose prose-slate dark:prose-invert max-w-none print:text-black p-8">
+                      <ReactMarkdown>{previewExport.content_rendered}</ReactMarkdown>
+                    </article>
+                  );
+                }
+              })()
             ) : previewExport?.content_rendered ? (
-              <article className="prose prose-slate dark:prose-invert max-w-none print:text-black">
+              <article className="prose prose-slate dark:prose-invert max-w-none print:text-black p-8">
                 <ReactMarkdown>{previewExport.content_rendered}</ReactMarkdown>
               </article>
             ) : (

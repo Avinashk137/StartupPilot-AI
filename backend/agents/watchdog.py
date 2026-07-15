@@ -135,7 +135,6 @@ class ProjectWatchdog:
                 "status": "completed",
                 "progress_percent": 100,
                 "current_agent": None,
-                "current_step": None,
                 "completed_at": datetime.now(timezone.utc).isoformat(),
             }).eq("id", project_id).execute()
             return
@@ -189,7 +188,6 @@ class ProjectWatchdog:
                 "status": "failed",
                 "error_message": f"Watchdog recovery failed: {str(e)[:300]}",
                 "current_agent": None,
-                "current_step": None,
             }).eq("id", project_id).execute()
 
 

@@ -1,8 +1,13 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
 import api from '@/lib/api'
 
 // Whether to emit verbose auth debug logs to the browser console
 const AUTH_DEBUG = import.meta.env.DEV
+
+// How many times to try the health check before showing a "taking long" message
+const MAX_QUICK_ATTEMPTS = 10   // 0–30 seconds (every 3 seconds)
+const MAX_TOTAL_ATTEMPTS = 40   // ~2 minutes total
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 export interface User {
@@ -37,8 +42,6 @@ interface AuthContextValue {
 
 /**
  * Extract a meaningful error message from an Axios error.
- * Tries the backend's { error: "..." } shape first, then falls back
- * to network-level messages.
  */
 export function extractErrorMessage(err: unknown, fallback: string): string {
   if (err && typeof err === 'object') {
@@ -48,32 +51,171 @@ export function extractErrorMessage(err: unknown, fallback: string): string {
       code?: string
     }
 
-    // Backend returns { detail: "..." } via FastAPI HTTPException handler
     const detail = axiosErr.response?.data?.detail
     if (detail && typeof detail === 'string') return detail
 
-    // Backend might return { error: "..." }
     const error = axiosErr.response?.data?.error
     if (error && typeof error === 'string') return error
 
-    // Backend might return { message: "..." }
     const message = axiosErr.response?.data?.message
     if (message && typeof message === 'string') return message
 
-    // Network-level error (no response from server)
     if (!axiosErr.response) {
-      return 'Backend unavailable'
+      return 'Cannot reach backend'
     }
 
-    // HTTP status-specific fallbacks
     const status = axiosErr.response?.status
     if (status === 401) return 'Invalid credentials. Please check your email and password.'
     if (status === 403) return 'Access denied. You do not have permission.'
     if (status === 422) return 'Validation error. Please check your input.'
     if (status === 500) return 'Server error. Please try again later.'
-    if (status === 502 || status === 503 || status === 504) return 'Backend unavailable'
+    if (status === 502 || status === 503 || status === 504) return 'Backend temporarily unavailable'
   }
   return fallback
+}
+
+// ── Backend Splash Screen ──────────────────────────────────────────────────────
+
+function BackendLoadingScreen({ attempt, maxAttempts }: { attempt: number; maxAttempts: number }) {
+  const isLate = attempt > MAX_QUICK_ATTEMPTS
+  const isFailed = attempt >= maxAttempts
+
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%)',
+        fontFamily: "'Inter', system-ui, sans-serif",
+        color: '#e2e8f0',
+        gap: '32px',
+        padding: '24px',
+      }}
+    >
+      {/* Animated logo */}
+      <div style={{ position: 'relative', width: 80, height: 80 }}>
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+            opacity: 0.25,
+            animation: 'ping 1.5s cubic-bezier(0,0,0.2,1) infinite',
+          }}
+        />
+        <div
+          style={{
+            position: 'relative',
+            width: 80,
+            height: 80,
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 0 40px rgba(99,102,241,0.4)',
+          }}
+        >
+          <svg width={40} height={40} viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L2 7l10 5 10-5-10-5z" fill="white" opacity={0.9} />
+            <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="white" strokeWidth={2} strokeLinecap="round" />
+          </svg>
+        </div>
+      </div>
+
+      {/* Title */}
+      <div style={{ textAlign: 'center' }}>
+        <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, letterSpacing: '-0.5px' }}>
+          StartupPilot AI
+        </h1>
+        <p style={{ color: '#94a3b8', marginTop: 8, fontSize: 15 }}>
+          Autonomous Business Builder
+        </p>
+      </div>
+
+      {/* Status message */}
+      <div
+        style={{
+          background: 'rgba(255,255,255,0.05)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: 12,
+          padding: '20px 32px',
+          textAlign: 'center',
+          maxWidth: 400,
+        }}
+      >
+        {isFailed ? (
+          <>
+            <p style={{ color: '#f87171', fontWeight: 600, margin: 0 }}>
+              ⚠️ Backend Unreachable
+            </p>
+            <p style={{ color: '#94a3b8', fontSize: 13, marginTop: 8 }}>
+              Could not connect after {maxAttempts} attempts.
+              <br />
+              Make sure the backend server is running:
+            </p>
+            <code
+              style={{
+                display: 'block',
+                marginTop: 12,
+                padding: '8px 16px',
+                background: 'rgba(0,0,0,0.3)',
+                borderRadius: 6,
+                fontSize: 12,
+                color: '#a5f3fc',
+              }}
+            >
+              npm run dev
+            </code>
+          </>
+        ) : (
+          <>
+            <p style={{ color: '#a5b4fc', fontWeight: 600, margin: 0 }}>
+              {isLate ? '⏳ Backend is starting up...' : '🔄 Connecting to backend...'}
+            </p>
+            <p style={{ color: '#64748b', fontSize: 13, marginTop: 8 }}>
+              {isLate
+                ? 'This is taking longer than usual. The server may be cold-starting.'
+                : 'Waiting for the API server to become ready.'}
+            </p>
+            {/* Progress bar */}
+            <div
+              style={{
+                marginTop: 16,
+                height: 4,
+                background: 'rgba(255,255,255,0.1)',
+                borderRadius: 2,
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  height: '100%',
+                  width: `${Math.min((attempt / maxAttempts) * 100, 95)}%`,
+                  background: 'linear-gradient(90deg, #6366f1, #8b5cf6)',
+                  borderRadius: 2,
+                  transition: 'width 0.5s ease',
+                }}
+              />
+            </div>
+            <p style={{ color: '#475569', fontSize: 12, marginTop: 8 }}>
+              Attempt {attempt} / {maxAttempts}
+            </p>
+          </>
+        )}
+      </div>
+
+      <style>{`
+        @keyframes ping {
+          75%, 100% { transform: scale(2); opacity: 0; }
+        }
+      `}</style>
+    </div>
+  )
 }
 
 // ── Context ────────────────────────────────────────────────────────────────────
@@ -84,33 +226,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isBackendReady, setIsBackendReady] = useState(false)
-  const [healthMessage, setHealthMessage] = useState('Backend starting...')
+  const attemptRef = useRef(0)
+  const [attempt, setAttempt] = useState(0)
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const checkHealth = useCallback(async (): Promise<boolean> => {
+    try {
+      const baseURL = import.meta.env.VITE_API_URL
+        ? import.meta.env.VITE_API_URL.replace('/v1', '')
+        : '/api'
+      const res = await fetch(`${baseURL}/health`, { signal: AbortSignal.timeout(5000) })
+      if (!res.ok) return false
+      const data = await res.json()
+      // Accept both "healthy" and "degraded" — degraded means DB is up but AI keys may be missing
+      return data.status === 'healthy' || data.status === 'degraded'
+    } catch {
+      return false
+    }
+  }, [])
 
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>
-    const checkHealth = async () => {
-      try {
-        const baseURL = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace('/v1', '') : '/api'
-        const res = await fetch(`${baseURL}/health`)
-        if (!res.ok) throw new Error('Not okay')
-        const data = await res.json()
-        if (data.status === 'healthy') {
-          setIsBackendReady(true)
-          if (interval) clearInterval(interval)
-        } else {
-          setHealthMessage('Backend unavailable')
-        }
-      } catch (err) {
-        setHealthMessage('Backend unavailable')
+    let cancelled = false
+
+    const poll = async () => {
+      attemptRef.current += 1
+      const n = attemptRef.current
+      if (!cancelled) setAttempt(n)
+
+      if (n > MAX_TOTAL_ATTEMPTS) {
+        if (intervalRef.current) clearInterval(intervalRef.current)
+        return
+      }
+
+      const healthy = await checkHealth()
+      if (healthy && !cancelled) {
+        if (intervalRef.current) clearInterval(intervalRef.current)
+        setIsBackendReady(true)
+        if (AUTH_DEBUG) console.log('[Auth] Backend ready after', n, 'attempts')
       }
     }
 
-    if (!isBackendReady) {
-      checkHealth()
-      interval = setInterval(checkHealth, 3000)
+    // Immediate first check
+    poll()
+    // Then poll every 3 seconds
+    intervalRef.current = setInterval(poll, 3000)
+
+    return () => {
+      cancelled = true
+      if (intervalRef.current) clearInterval(intervalRef.current)
     }
-    return () => { if (interval) clearInterval(interval) }
-  }, [isBackendReady])
+  }, [checkHealth])
 
   const fetchUser = useCallback(async () => {
     try {
@@ -126,7 +291,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  // Restore session on mount if a token exists in sessionStorage
+  // Restore session on mount once backend is ready
   useEffect(() => {
     if (!isBackendReady) return
     const token = sessionStorage.getItem('access_token')
@@ -168,12 +333,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (AUTH_DEBUG) console.log('[Auth] Register response:', data)
 
     if (data.email_confirmation_required) {
-      // Email confirmation is enabled — user needs to verify email before logging in
       if (AUTH_DEBUG) console.log('[Auth] Email confirmation required')
       return { emailConfirmationRequired: true, message: data.message }
     }
 
-    // Email confirmation disabled — user is logged in immediately
     sessionStorage.setItem('access_token', data.access_token)
     sessionStorage.setItem('refresh_token', data.refresh_token)
     setUser(data.user as User)
@@ -184,11 +347,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async (): Promise<void> => {
     if (AUTH_DEBUG) console.log('[Auth] Logging out...')
     try {
-      // Call server to invalidate the Supabase session
       await api.post('/auth/logout')
       if (AUTH_DEBUG) console.log('[Auth] Server-side logout successful')
     } catch (err) {
-      // Non-critical — local state is cleared regardless
       console.warn('[Auth] Server-side logout failed (session still cleared locally)', err)
     } finally {
       sessionStorage.removeItem('access_token')
@@ -208,12 +369,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await fetchUser()
   }
 
+  // Show branded loading screen while waiting for backend
   if (!isBackendReady) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <p className="text-xl font-medium text-muted-foreground animate-pulse">{healthMessage}</p>
-      </div>
-    )
+    return <BackendLoadingScreen attempt={attempt} maxAttempts={MAX_TOTAL_ATTEMPTS} />
   }
 
   return (

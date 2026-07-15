@@ -129,7 +129,7 @@ export function DashboardInsightsModal({
   const Content = () => (
     <div className="flex flex-col h-full overflow-hidden bg-background transition-colors duration-200 rounded-[24px]">
       {/* Sticky Header */}
-      <div className="sticky top-0 z-20 p-6 sm:px-8 pt-8 pb-4 border-b border-border bg-background/95 backdrop-blur-md transition-colors duration-200 rounded-t-[24px]">
+      <div className="sticky top-0 z-20 p-6 sm:px-8 pt-8 pb-4 border-b border-border bg-white/80 dark:bg-background/80 backdrop-blur-md transition-colors duration-200 rounded-t-[24px]">
         <div className="flex flex-col gap-6">
           <div className="flex items-start justify-between">
             <div>

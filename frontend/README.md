@@ -71,3 +71,49 @@ export default defineConfig([
   },
 ])
 ```
+
+## Project Structure & Infrastructure
+
+```text
+StartupPilot-AI/
+├── backend/                  # Python FastAPI Backend
+│   ├── agents/               # AI Orchestrator & Master Agents
+│   ├── api/                  # FastAPI Routers & Endpoints
+│   ├── core/                 # Configuration, Security, Dependencies
+│   ├── services/             # Core Services & AI Integration
+│   └── main.py               # FastAPI Application Entry Point
+├── frontend/                 # React + TypeScript + Vite Frontend (This directory)
+│   ├── public/               # Static Public Assets
+│   ├── src/                  
+│   │   ├── assets/           # Images, Icons, etc.
+│   │   ├── components/       # Reusable UI Components
+│   │   ├── hooks/            # Custom React Hooks
+│   │   ├── lib/              # Utility Functions & API Clients
+│   │   ├── pages/            # Application Views/Routes
+│   │   └── providers/        # React Context Providers
+│   ├── package.json          # Node.js Dependencies & Scripts
+│   └── vite.config.ts        # Vite Configuration
+├── supabase_schema.sql       # Database Schema Definition
+└── README.md                 # Main Project Overview
+```
+
+### Infrastructure Overview
+
+- **Frontend Application (`/frontend`)**: A modern, responsive Single Page Application (SPA) built with React, TypeScript, and Vite. It serves as the primary user interface.
+- **Backend API (`/backend`)**: A highly performant RESTful API built with FastAPI and Python, handling all core business logic and AI orchestration.
+- **AI Orchestration (`/backend/agents`)**: The intelligence layer powered by dual-call architecture supporting multiple AI providers including Google Gemini, OpenAI, Anthropic, and Groq (`StrategyMasterAgent` and `ExecutionMasterAgent`).
+- **Database & Authentication**: Fully managed PostgreSQL database with Row Level Security (RLS) and integrated user authentication, managed through Supabase.
+
+### Getting Started (Missing Files & Keys)
+
+To run this frontend and connect it to the backend successfully, you must create a `.env.local` file in this `/frontend` directory:
+
+```bash
+cp .env.example .env.local
+```
+
+**Required keys in `.env.local`**:
+- `VITE_SUPABASE_URL`: Your Supabase Project URL
+- `VITE_SUPABASE_ANON_KEY`: Your Supabase Project Anon/Publishable Key
+
+*Note: Ensure the backend is also properly configured with its respective `.env` file containing Supabase and AI provider keys (like `OPENAI_API_KEY` or `GEMINI_API_KEY`).*

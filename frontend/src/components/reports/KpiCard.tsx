@@ -37,8 +37,10 @@ export default function KpiCard({
 
   return (
     <div className={cn(
-      'rounded-xl border border-border bg-card p-5 transition-all hover:shadow-md hover:-translate-y-0.5 flex flex-col',
-      highlight && 'border-primary/30 bg-primary/5',
+      'kpi-card rounded-xl border border-border bg-card p-5 flex flex-col',
+      'transition-all hover:shadow-md hover:-translate-y-0.5',
+      'print:bg-white print:border-gray-200 print:shadow-none print:translate-y-0 print:p-3',
+      highlight && 'border-primary/30 bg-primary/5 print:border-indigo-200 print:bg-indigo-50/50',
       className
     )}>
       <div className="flex items-start justify-between mb-3">

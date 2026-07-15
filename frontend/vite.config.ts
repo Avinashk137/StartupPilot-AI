@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
 export default defineConfig({
-  logLevel: 'silent',
+  logLevel: 'info',
   plugins: [
     react(),
     tailwindcss(),

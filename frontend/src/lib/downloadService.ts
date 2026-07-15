@@ -1,5 +1,4 @@
 import api from './api';
-import html2pdf from 'html2pdf.js';
 
 export const downloadService = {
   /**
@@ -11,7 +10,7 @@ export const downloadService = {
         responseType: 'blob'
       });
       
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const url = window.URL.createObjectURL(response.data);
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute('download', filename);
@@ -28,37 +27,6 @@ export const downloadService = {
     }
   },
 
-  /**
-   * Generates a PDF client-side using html2pdf.js to preserve styles perfectly.
-   */
-  async generatePDF(elementId: string, filename: string) {
-    const element = document.getElementById(elementId);
-    if (!element) {
-      throw new Error(`Element ${elementId} not found`);
-    }
-
-    // Prepare options
-    const opt = {
-      margin:       10,
-      filename:     filename,
-      image:        { type: 'jpeg' as const, quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true, logging: false },
-      jsPDF:        { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
-    };
-
-    // Add a class temporarily to hide elements we don't want in the PDF (e.g., buttons)
-    element.classList.add('pdf-mode');
-    
-    try {
-      await html2pdf().set(opt).from(element).save();
-      return true;
-    } catch (err) {
-      console.error('PDF Generation failed', err);
-      throw err;
-    } finally {
-      element.classList.remove('pdf-mode');
-    }
-  },
 
   /**
    * Print dialog

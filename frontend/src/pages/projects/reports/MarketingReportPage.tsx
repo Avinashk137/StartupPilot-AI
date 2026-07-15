@@ -82,7 +82,7 @@ function EmailCard({ email }: { email: any }) {
   )
 }
 
-export default function MarketingReportPage({ projectId, hideNavigation, overrideData, overrideProject, overrideReportMetadata }: { projectId?: string, hideNavigation?: boolean, overrideData?: any, overrideProject?: any, overrideReportMetadata?: any } = {}) {
+export default function MarketingReportPage({ projectId, hideNavigation, overrideData, overrideProject, overrideReportMetadata, printMode }: { projectId?: string, hideNavigation?: boolean, overrideData?: any, overrideProject?: any, overrideReportMetadata?: any, printMode?: boolean } = {}) {
   const params = useParams<{ id: string }>()
   const id = projectId || params.id
   const [report, setReport] = useState<any>(null)
@@ -157,6 +157,7 @@ export default function MarketingReportPage({ projectId, hideNavigation, overrid
       error={error}
       onReload={loadData}
       hideNavigation={hideNavigation}
+      printMode={printMode}
     >
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

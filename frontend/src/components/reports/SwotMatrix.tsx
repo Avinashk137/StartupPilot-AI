@@ -41,7 +41,11 @@ export default function SwotMatrix({ swot, title = 'SWOT Analysis' }: SwotMatrix
           const c = SWOT_CONFIG[key]
           const items = swot[key] || []
           return (
-            <div key={key} className={cn('rounded-xl border p-4', c.bg, c.border)}>
+            <div key={key} className={cn(
+              'swot-quadrant rounded-xl border p-4',
+              'print:break-inside-avoid print:page-break-inside-avoid print:shadow-none',
+              c.bg, c.border
+            )}>
               <div className="flex items-center gap-2 mb-3">
                 <div className={cn('w-2.5 h-2.5 rounded-full', c.dot)} />
                 <h4 className={cn('font-bold text-sm', c.color)}>{c.label}</h4>

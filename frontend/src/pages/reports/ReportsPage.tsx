@@ -10,7 +10,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { useExportPDF } from '@/hooks/useExportPDF'
 
 // Import report pages
 import ResearchReportPage from '@/pages/projects/reports/ResearchReportPage'
@@ -368,7 +367,7 @@ export default function ReportsPage() {
               className="w-full max-w-6xl my-4 mx-4 bg-card border shadow-2xl rounded-2xl flex flex-col overflow-hidden"
             >
               {/* Modal Header */}
-              <div className="px-6 py-4 border-b flex flex-col md:flex-row md:items-center justify-between gap-4 bg-muted/30">
+              <div className="px-6 py-4 border-b flex flex-col md:flex-row md:items-center justify-between gap-4 sticky top-0 z-10 bg-white/80 dark:bg-background/80 backdrop-blur-md">
                 <div>
                   <div className="flex items-center gap-3">
                     <h2 className="text-xl font-bold">{selectedReport.title}</h2>
@@ -407,7 +406,7 @@ export default function ReportsPage() {
               </div>
 
               {/* Modal Body */}
-              <div className="flex-1 overflow-y-auto p-0 md:p-6 scrollbar-custom bg-background/50">
+              <div className="flex-1 overflow-y-auto p-0 md:p-6 scrollbar-custom bg-background">
                 {(() => {
                   let dataToPass = selectedReport.reportData.raw_data
                   let reportMetadataToPass = selectedReport.reportData

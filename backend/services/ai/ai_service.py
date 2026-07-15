@@ -79,7 +79,6 @@ class AIService:
         """Register a custom or user-provided provider"""
         self._providers[provider.provider_name] = provider
         self._provider_states[provider.provider_name] = state
-        logger.info(f"Custom provider registered: {provider.provider_name} ({state.value})")
 
     def set_primary_provider(self, provider_name: str):
         """Switch the primary provider at runtime"""
@@ -89,7 +88,7 @@ class AIService:
         logger.info(f"Primary AI provider switched to: {provider_name}")
 
     def get_available_providers(self) -> List[str]:
-        # Filter explicitly healthy ones
+        """Return a list of provider names that are currently HEALTHY."""
         return [name for name, state in self._provider_states.items() if state == ProviderState.HEALTHY]
 
     def _get_ordered_providers(self, preferred_provider: Optional[str] = None) -> List[str]:
@@ -139,6 +138,10 @@ class AIService:
             await self._initialize_providers()
 
         ordered_providers = self._get_ordered_providers(preferred_provider)
+
+        if not ordered_providers:
+            # Fallback: if all providers are marked rate-limited/exhausted, try any configured provider anyway
+            ordered_providers = [name for name in self._fallback_order if name in self._providers and self._providers[name]._api_key]
 
         if not ordered_providers:
             raise AIServiceException("No AI providers are currently healthy or configured.")

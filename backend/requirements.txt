@@ -1,5 +1,5 @@
 # Core Framework
-fastapi
+fastapi[standard]
 uvicorn[standard]
 python-multipart
 
@@ -33,3 +33,7 @@ tenacity
 # Dev Tools
 ruff
 json-repair
+
+# Export formats
+python-docx
+python-pptx

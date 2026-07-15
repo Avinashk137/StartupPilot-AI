@@ -33,7 +33,7 @@ const CustomTooltip = ({ active, payload, label, currency = 'USD' }: any) => {
   return null
 }
 
-export default function FinancialReportPage({ projectId, hideNavigation, overrideData, overrideProject, overrideReportMetadata }: { projectId?: string, hideNavigation?: boolean, overrideData?: any, overrideProject?: any, overrideReportMetadata?: any } = {}) {
+export default function FinancialReportPage({ projectId, hideNavigation, overrideData, overrideProject, overrideReportMetadata, printMode }: { projectId?: string, hideNavigation?: boolean, overrideData?: any, overrideProject?: any, overrideReportMetadata?: any, printMode?: boolean } = {}) {
   const params = useParams<{ id: string }>()
   const id = projectId || params.id
   const [report, setReport] = useState<any>(null)
@@ -113,6 +113,7 @@ export default function FinancialReportPage({ projectId, hideNavigation, overrid
       error={error}
       onReload={loadData}
       hideNavigation={hideNavigation}
+      printMode={printMode}
     >
       {/* KPI Cards */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-2 md:grid-cols-4 gap-4">

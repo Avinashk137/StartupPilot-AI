@@ -31,7 +31,7 @@ function SeverityBadge({ level }: { level: string }) {
   )
 }
 
-export default function ResearchReportPage({ projectId, hideNavigation, overrideData, overrideProject, overrideReportMetadata }: { projectId?: string, hideNavigation?: boolean, overrideData?: any, overrideProject?: any, overrideReportMetadata?: any } = {}) {
+export default function ResearchReportPage({ projectId, hideNavigation, overrideData, overrideProject, overrideReportMetadata, printMode }: { projectId?: string, hideNavigation?: boolean, overrideData?: any, overrideProject?: any, overrideReportMetadata?: any, printMode?: boolean } = {}) {
   const params = useParams<{ id: string }>()
   const id = projectId || params.id
   const [report, setReport] = useState<any>(null)
@@ -95,6 +95,7 @@ export default function ResearchReportPage({ projectId, hideNavigation, override
       error={error}
       onReload={loadData}
       hideNavigation={hideNavigation}
+      printMode={printMode}
     >
       {/* KPI Cards */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className={cn("grid gap-4", (raw.potential_customers || raw.business_demand) ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-3" : "grid-cols-2 md:grid-cols-4")}>

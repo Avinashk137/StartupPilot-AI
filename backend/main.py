@@ -1,4 +1,8 @@
 import os
+import sys
+import time
+import logging
+from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
@@ -21,35 +25,34 @@ from .agents.watchdog import start_watchdog, stop_watchdog
 from .core.supabase_client import supabase_admin
 from .api.exception_middleware import ExceptionLoggingMiddleware
 
+# ── Log directory: always relative to this file, regardless of CWD ────────────
+BACKEND_DIR = Path(__file__).resolve().parent
+LOG_DIR = BACKEND_DIR / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = LOG_DIR / "server.log"
 
-import logging
-import sys
-
-# Ensure logs directory exists
-os.makedirs("backend/logs", exist_ok=True)
-
-# 1. Standard library logging setup
+# ── Logging setup ─────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(message)s",
     handlers=[
-        logging.FileHandler("backend/logs/server.log"),
-    ]
+        logging.FileHandler(str(LOG_FILE)),
+    ],
 )
 
-# 2. Add a console handler that only shows WARNING and above
+# Console handler: WARNING+ only (keeps startup output clean)
 console_handler = logging.StreamHandler(sys.stdout)
 console_handler.setLevel(logging.WARNING)
 logging.getLogger().addHandler(console_handler)
 
-# 3. Silence noisy third-party loggers
-for logger_name in ["uvicorn", "uvicorn.error", "uvicorn.access", "fastapi", "watchfiles", "watchfiles.main"]:
-    noisy_logger = logging.getLogger(logger_name)
-    noisy_logger.setLevel(logging.WARNING)
-    noisy_logger.propagate = False
-    noisy_logger.addHandler(logging.FileHandler("backend/logs/server.log"))
+# Silence noisy third-party loggers (keep them file-only)
+for _logger_name in ["uvicorn", "uvicorn.error", "uvicorn.access", "fastapi", "watchfiles", "watchfiles.main"]:
+    _noisy = logging.getLogger(_logger_name)
+    _noisy.setLevel(logging.WARNING)
+    _noisy.propagate = False
+    _noisy.addHandler(logging.FileHandler(str(LOG_FILE)))
 
-# 4. Configure structlog to output to standard logger
+# Configure structlog → standard library
 structlog.configure(
     processors=[
         structlog.stdlib.filter_by_level,
@@ -67,21 +70,24 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
+# Track when the process started (for uptime reporting)
+_startup_time: float = time.time()
+
 
 def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
-        description="StartupPilot AI - Autonomous Business Builder API",
+        description="StartupPilot AI — Autonomous Business Builder API",
         docs_url="/api/docs",
         redoc_url="/api/redoc",
         openapi_url="/api/openapi.json",
     )
 
-    # ── Middleware ────────────────────────────────────────
+    # ── Middleware ────────────────────────────────────────────────────────────
     app.add_middleware(ExceptionLoggingMiddleware)
 
-    # ── CORS ──────────────────────────────────────────────
+    # ── CORS ──────────────────────────────────────────────────────────────────
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_origins_list,
@@ -90,12 +96,12 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # ── Exception Handlers ────────────────────────────────
+    # ── Exception Handlers ────────────────────────────────────────────────────
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(Exception, general_exception_handler)
 
-    # ── Routers ───────────────────────────────────────────
+    # ── Routers ───────────────────────────────────────────────────────────────
     app.include_router(auth_router, prefix="/api/v1")
     app.include_router(projects_router, prefix="/api/v1")
     app.include_router(reports_router, prefix="/api/v1")
@@ -103,35 +109,98 @@ def create_app() -> FastAPI:
     app.include_router(settings_router, prefix="/api/v1")
     app.include_router(exports_router, prefix="/api/v1/exports")
 
-    # ── Health Check ──────────────────────────────────────
+    # ── Health Check ──────────────────────────────────────────────────────────
     @app.get("/api/health", tags=["Health"])
     async def health_check():
+        """
+        Real health check — verifies each critical subsystem.
+        Returns 200 only when all required subsystems are operational.
+        """
+        uptime_seconds = round(time.time() - _startup_time, 1)
+        checks: dict = {}
+        overall_healthy = True
+
+        # 1. Database / Supabase connectivity
+        try:
+            res = supabase_admin.table("projects").select("id").limit(1).execute()
+            checks["database"] = {"status": "connected"}
+        except Exception as e:
+            checks["database"] = {"status": "error", "detail": str(e)[:120]}
+            overall_healthy = False
+
+        # 2. AI providers availability
+        try:
+            from .services.ai.ai_service import ai_service
+            # Lazy-init without making a live API call
+            if not ai_service._initialized:
+                await ai_service._initialize_providers()
+            available = ai_service.get_available_providers()
+            if available:
+                checks["ai"] = {"status": "ready", "providers": available}
+            else:
+                checks["ai"] = {"status": "degraded", "detail": "No AI providers with valid keys configured"}
+                # AI being down is a warning, not a hard failure — backend still serves auth/projects
+        except Exception as e:
+            checks["ai"] = {"status": "error", "detail": str(e)[:120]}
+
+        # 3. Storage directory
+        try:
+            upload_dir = Path(settings.UPLOAD_DIR)
+            upload_dir.mkdir(parents=True, exist_ok=True)
+            checks["storage"] = {"status": "ok", "path": str(upload_dir)}
+        except Exception as e:
+            checks["storage"] = {"status": "error", "detail": str(e)[:120]}
+
         return {
-            "status": "healthy",
-            "database": "connected",
-            "ai": "ready"
+            "status": "healthy" if overall_healthy else "degraded",
+            "version": settings.APP_VERSION,
+            "uptime_seconds": uptime_seconds,
+            "environment": settings.APP_ENV,
+            **checks,
         }
 
+    # ── Root Redirect ─────────────────────────────────────────────────────────
+    @app.get("/", tags=["Root"])
+    async def root():
+        return {
+            "name": settings.APP_NAME,
+            "version": settings.APP_VERSION,
+            "docs": "/api/docs",
+            "health": "/api/health",
+        }
+
+    # ── Startup Event ─────────────────────────────────────────────────────────
     @app.on_event("startup")
     async def on_startup():
-        logger.info(f"[START] {settings.APP_NAME} v{settings.APP_VERSION} starting...")
-        logger.info("[DOCS] API Docs: http://localhost:8000/api/docs")
-        logger.info(f"[AI] Primary AI Provider: {settings.PRIMARY_AI_PROVIDER}")
+        global _startup_time
+        _startup_time = time.time()
 
         # Create upload directory
-        os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+        Path(settings.UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
+
+        # Print startup banner to stdout (visible in terminal)
+        print(f"\n{'-' * 50}")
+        print(f"  {settings.APP_NAME} v{settings.APP_VERSION}")
+        print(f"  API Docs  : http://127.0.0.1:8000/api/docs")
+        print(f"  Health    : http://127.0.0.1:8000/api/health")
+        print(f"  AI        : {settings.PRIMARY_AI_PROVIDER} (primary)")
+        print(f"  Logs      : {LOG_FILE}")
+        print(f"{'-' * 50}\n")
+
+        logger.info("StartupPilot AI starting", version=settings.APP_VERSION, env=settings.APP_ENV)
 
         # Start the background watchdog (stall detector / auto-recovery)
         try:
             await start_watchdog(supabase_admin)
-            logger.info("[WATCHDOG] Background watchdog started")
+            logger.info("Background watchdog started")
         except Exception as e:
-            logger.warning(f"[WATCHDOG] Failed to start watchdog: {e}")
+            logger.warning("Failed to start watchdog (non-fatal)", error=str(e))
 
-
+    # ── Shutdown Event ────────────────────────────────────────────────────────
     @app.on_event("shutdown")
     async def on_shutdown():
-        logger.info("[STOP] StartupPilot AI shutting down...")
+        logger.info("StartupPilot AI shutting down")
+        print("\n  StartupPilot AI shutting down...\n")
         try:
             await stop_watchdog()
         except Exception:

@@ -3,10 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "setup": "node scripts/setup.js",
     "dev": "node scripts/start-dev.js",
     "dev:frontend": "cd frontend && npm run dev",
-    "dev:backend": "set PYTHONIOENCODING=utf-8&& cd backend && venv\\Scripts\\activate && fastapi dev main.py",
-    "install:all": "npm install && cd frontend && npm install && cd ../backend && venv\\Scripts\\activate && pip install -r requirements.txt"
+    "dev:backend": "node -e \"const p=process.platform==='win32'?'backend/venv/Scripts/python':'backend/venv/bin/python'; require('child_process').spawn(p, ['-m', 'uvicorn', 'backend.main:app', '--reload', '--host', '127.0.0.1', '--port', '8000'], {cwd: __dirname, stdio: 'inherit', shell: false})\"",
+    "install:all": "node scripts/setup.js"
   },
   "dependencies": {
     "@supabase/server": "^1.1.0"

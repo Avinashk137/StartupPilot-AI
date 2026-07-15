@@ -11,7 +11,7 @@ from typing import Any, Dict
 import structlog
 
 from ..core.supabase_client import supabase_admin
-from .auth import get_current_user
+from ..core.dependencies import get_current_user
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 logger = structlog.get_logger()
@@ -56,7 +56,7 @@ def _ensure_settings_table():
 
 
 @router.get("")
-async def get_settings(current_user: dict = Depends(get_current_user)):
+async def get_settings(current_user = Depends(get_current_user)):
     """
     Fetch the current user's settings.
     If no row exists, creates one with defaults and returns them.
@@ -93,7 +93,7 @@ class SettingsUpdateRequest(BaseModel):
 @router.put("")
 async def update_settings(
     updates: SettingsUpdateRequest,
-    current_user: dict = Depends(get_current_user)
+    current_user = Depends(get_current_user)
 ):
     """
     Partial-update user settings.
@@ -138,7 +138,7 @@ async def update_settings(
 
 
 @router.post("/logout-all-devices")
-async def logout_all_devices(current_user: dict = Depends(get_current_user)):
+async def logout_all_devices(current_user = Depends(get_current_user)):
     """
     Increment the user's token_version to invalidate all existing sessions.
     """

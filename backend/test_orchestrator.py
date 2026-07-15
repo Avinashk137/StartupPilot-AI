@@ -6,17 +6,17 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backend.agents.orchestrator import AgentOrchestrator
-from backend.core.supabase_client import supabase_client
+from backend.core.supabase_client import supabase_admin
 import structlog
 
 logger = structlog.get_logger()
 
 async def main():
     print("Testing orchestrator...")
-    orchestrator = AgentOrchestrator(supabase_client)
+    orchestrator = AgentOrchestrator(supabase_admin)
     
     # Check if there is an existing project to test with
-    res = supabase_client.table("projects").select("*").limit(1).execute()
+    res = supabase_admin.table("projects").select("*").limit(1).execute()
     if not res.data:
         print("No project found in Supabase. Please create a project via UI first.")
         return
@@ -25,7 +25,7 @@ async def main():
     print(f"Running pipeline for project: {project['id']} - {project.get('business_name')}")
     
     try:
-        results = await orchestrator.run(project)
+        results = await orchestrator.run(project, job_id="test-job-id")
         print("Pipeline finished.")
         print("Results keys:", results.keys())
         for k, v in results.items():

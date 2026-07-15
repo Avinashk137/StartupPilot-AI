@@ -27,7 +27,8 @@ class Settings(BaseSettings):
 
     # AI Providers
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-flash-latest"
+
 
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
@@ -58,32 +59,55 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def validate_required_env_vars(self) -> "Settings":
         """Fail fast with a clear developer error if critical env vars are missing."""
-        missing = []
+        missing_required = []
 
         if not self.SUPABASE_URL:
-            missing.append("SUPABASE_URL")
+            missing_required.append("SUPABASE_URL")
         if not self.SUPABASE_PUBLISHABLE_KEY:
-            missing.append("SUPABASE_PUBLISHABLE_KEY")
+            missing_required.append("SUPABASE_PUBLISHABLE_KEY")
         if not self.SUPABASE_SECRET_KEY:
-            missing.append("SUPABASE_SECRET_KEY")
+            missing_required.append("SUPABASE_SECRET_KEY")
 
-        if missing:
-            print(
+        if missing_required:
+            msg = (
                 "\n" + "=" * 60 + "\n"
                 "  STARTUP ERROR: Missing required environment variables\n"
-                "=" * 60 + "\n"
-                f"  Missing: {', '.join(missing)}\n\n"
-                "  Please ensure your backend/.env file contains:\n"
+                + "=" * 60 + "\n"
+                f"  Missing: {', '.join(missing_required)}\n\n"
+                "  Create backend/.env from the template:\n"
+                "    cp backend/.env.example backend/.env\n\n"
+                "  Then fill in your Supabase credentials:\n"
                 "    SUPABASE_URL=https://your-project.supabase.co\n"
                 "    SUPABASE_PUBLISHABLE_KEY=sb_publishable_...\n"
                 "    SUPABASE_SECRET_KEY=sb_secret_...\n"
-                "=" * 60 + "\n",
-                file=sys.stderr,
+                + "=" * 60 + "\n"
             )
+            # Print to BOTH stdout and stderr so it's always visible
+            print(msg, flush=True)
+            print(msg, file=sys.stderr, flush=True)
             raise ValueError(
-                f"Missing required environment variables: {', '.join(missing)}. "
+                f"Missing required environment variables: {', '.join(missing_required)}. "
                 "Check your backend/.env file."
             )
+
+        # Warn (don't crash) if no AI provider is configured
+        has_ai_key = any([
+            self.GEMINI_API_KEY,
+            self.OPENAI_API_KEY,
+            self.ANTHROPIC_API_KEY,
+            self.GROQ_API_KEY,
+            self.TOGETHER_API_KEY,
+        ])
+        if not has_ai_key:
+            warning = (
+                "\n" + "-" * 60 + "\n"
+                "  WARNING: No AI provider API key is configured.\n"
+                "     AI analysis will not work until you add at least one:\n"
+                "       GEMINI_API_KEY=   (recommended - get free key at aistudio.google.com)\n"
+                "       OPENAI_API_KEY=\n"
+                + "-" * 60 + "\n"
+            )
+            print(warning, flush=True)
 
         return self
 

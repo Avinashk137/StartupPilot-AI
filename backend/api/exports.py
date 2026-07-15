@@ -1,38 +1,27 @@
-import os
 import io
 import json
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 from datetime import datetime, timezone
 import structlog
 
-from supabase import create_client, Client
-from backend.core.dependencies import get_current_user
-from backend.core.config import settings
+from ..core.dependencies import get_current_user
+from ..core.supabase_client import supabase_admin
 
 logger = structlog.get_logger()
 router = APIRouter(tags=["Exports"])
 
-def get_supabase() -> Client:
-    url = os.getenv("SUPABASE_URL", "")
-    key = os.getenv("SUPABASE_SECRET_KEY", "")
-    if not url or not key:
-        raise HTTPException(status_code=500, detail="Missing Supabase credentials")
-    return create_client(url, key)
-
 @router.get("/stats")
 async def get_export_stats(
     current_user = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
 ):
     try:
         user_id = current_user.id
         
         # We can't do complex aggregates easily via PostgREST without an RPC, 
         # so we'll fetch basic metrics by querying the table (only non-deleted).
-        res = supabase.table("exports").select("status, download_count").eq("user_id", str(user_id)).eq("is_deleted", False).execute()
+        res = supabase_admin.table("exports").select("status, download_count").eq("user_id", str(user_id)).eq("is_deleted", False).execute()
         
         records = res.data or []
         total = len(records)
@@ -41,7 +30,7 @@ async def get_export_stats(
         failed = sum(1 for r in records if r.get("status") == "failed")
         downloads = sum(r.get("download_count") or 0 for r in records)
         
-        last_res = supabase.table("exports").select("created_at").eq("user_id", str(user_id)).eq("is_deleted", False).order("created_at", desc=True).limit(1).execute()
+        last_res = supabase_admin.table("exports").select("created_at").eq("user_id", str(user_id)).eq("is_deleted", False).order("created_at", desc=True).limit(1).execute()
         last_date = last_res.data[0].get("created_at") if last_res.data else None
         
         return {
@@ -67,12 +56,11 @@ async def list_exports(
     page: int = 1,
     limit: int = 20,
     current_user = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
 ):
     try:
         user_id = current_user.id
         
-        query = supabase.table("exports").select("id, project_id, project_name, industry, country, report_type, status, generated_by, version, download_count, created_at, updated_at", count="exact")
+        query = supabase_admin.table("exports").select("id, project_id, project_name, industry, country, report_type, status, generated_by, version, download_count, created_at, updated_at", count="exact")
         query = query.eq("user_id", str(user_id)).eq("is_deleted", False)
         
         if status and status.lower() != "all":
@@ -118,10 +106,9 @@ async def list_exports(
 async def preview_export(
     export_id: str,
     current_user = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
 ):
     try:
-        res = supabase.table("exports").select("content, markdown, html").eq("id", export_id).eq("user_id", str(current_user.id)).execute()
+        res = supabase_admin.table("exports").select("content, markdown, html").eq("id", export_id).eq("user_id", str(current_user.id)).execute()
         if not res.data:
             raise HTTPException(status_code=404, detail="Export not found")
         return res.data[0]
@@ -134,10 +121,9 @@ async def preview_export(
 async def delete_export(
     export_id: str,
     current_user = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
 ):
     try:
-        res = supabase.table("exports").update({"is_deleted": True}).eq("id", export_id).eq("user_id", str(current_user.id)).execute()
+        res = supabase_admin.table("exports").update({"is_deleted": True}).eq("id", export_id).eq("user_id", str(current_user.id)).execute()
         if not res.data:
             raise HTTPException(status_code=404, detail="Export not found")
         return {"success": True}
@@ -151,14 +137,13 @@ async def download_export(
     export_id: str,
     format: str,
     current_user = Depends(get_current_user),
-    supabase: Client = Depends(get_supabase)
 ):
     format = format.lower()
     if format not in ["docx", "csv", "pptx", "pdf"]:
         raise HTTPException(status_code=400, detail=f"Format {format} not supported")
         
     try:
-        res = supabase.table("exports").select("*").eq("id", export_id).eq("user_id", str(current_user.id)).execute()
+        res = supabase_admin.table("exports").select("*").eq("id", export_id).eq("user_id", str(current_user.id)).execute()
         if not res.data:
             raise HTTPException(status_code=404, detail="Export not found")
             
@@ -260,7 +245,7 @@ async def download_export(
             file_stream.seek(0)
             csv_data = file_stream.getvalue()
             
-            supabase.table("exports").update({
+            supabase_admin.table("exports").update({
                 "download_count": (export.get("download_count") or 0) + 1,
                 "last_downloaded": datetime.now(timezone.utc).isoformat()
             }).eq("id", export_id).execute()
@@ -273,7 +258,7 @@ async def download_export(
 
         file_stream.seek(0)
         
-        supabase.table("exports").update({
+        supabase_admin.table("exports").update({
             "download_count": (export.get("download_count") or 0) + 1,
             "last_downloaded": datetime.now(timezone.utc).isoformat()
         }).eq("id", export_id).execute()

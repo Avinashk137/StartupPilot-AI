@@ -15,7 +15,7 @@ import KpiCard from '@/components/reports/KpiCard'
 
 const PALETTE = ['#6366f1', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444']
 
-export default function BusinessPlanReportPage({ projectId, hideNavigation, overrideData, overrideProject, overrideReportMetadata }: { projectId?: string, hideNavigation?: boolean, overrideData?: any, overrideProject?: any, overrideReportMetadata?: any } = {}) {
+export default function BusinessPlanReportPage({ projectId, hideNavigation, overrideData, overrideProject, overrideReportMetadata, printMode }: { projectId?: string, hideNavigation?: boolean, overrideData?: any, overrideProject?: any, overrideReportMetadata?: any, printMode?: boolean } = {}) {
   const params = useParams<{ id: string }>()
   const id = projectId || params.id
   const [report, setReport] = useState<any>(null)
@@ -82,6 +82,7 @@ export default function BusinessPlanReportPage({ projectId, hideNavigation, over
       error={error}
       onReload={loadData}
       hideNavigation={hideNavigation}
+      printMode={printMode}
     >
       {/* Executive Summary */}
       {raw.executive_summary && (

@@ -218,6 +218,8 @@ class AgentOrchestrator:
                     research_context=None,
                     base_progress=base_progress,
                     on_progress=on_progress,
+                    effective_retry_delays=effective_retry_delays,
+                    effective_max_retries=effective_max_retries,
                     ai_quality=user_settings.get("ai_quality", "balanced"),
                     ai_provider=user_settings.get("ai_provider", "auto"),
                 )
@@ -651,7 +653,8 @@ class AgentOrchestrator:
 
                 if self._is_valid_section(section_key, parsed):
                     # Validation: Response exists, Length > minimum, Markdown valid, JSON valid
-                    report_content = parsed.get("report", "")
+                    import json
+                    report_content = json.dumps(parsed)
                     if not report_content or len(report_content.strip()) < 500:
                         raise ValueError(f"Generated report is too short or empty (length: {len(report_content)}). Requesting retry.")
 
@@ -885,7 +888,7 @@ class AgentOrchestrator:
                 logger.error(f"Failed to save checkpoint for {section_key}", error=str(e2))
                 raise
 
-    async def _save_report_status(self, project_id: str, section_key: str, status: str, data: dict = None):
+    async def _save_report_status(self, project_id: str, section_key: str, status: str, raw_data: dict = None):
         """Set a section's status without full data (e.g., 'running' or 'failed')."""
         table = TABLE_MAP.get(section_key)
         if not table:
@@ -893,7 +896,7 @@ class AgentOrchestrator:
         record = {
             "project_id": project_id,
             "status": status,
-            "raw_data": data or {},
+            "raw_data": raw_data or {},
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         try:
